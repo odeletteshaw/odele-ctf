@@ -10,7 +10,9 @@ import sys
 from agent import solve_web
 from challenges import (
     authbypass,
+    cbc_flip,
     cmdi,
+    ecb_paste,
     idor,
     jwt_auth,
     jwt_weak,
@@ -30,6 +32,8 @@ CHALLENGES = {
     "ssrf": ssrf,
     "idor": idor,
     "authbypass": authbypass,
+    "cbc_flip": cbc_flip,
+    "ecb_paste": ecb_paste,
     "ssti": ssti,
     "jwt_auth": jwt_auth,
     "jwt_weak": jwt_weak,
