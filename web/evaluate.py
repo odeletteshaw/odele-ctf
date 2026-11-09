@@ -8,7 +8,7 @@ import secrets
 import sys
 
 from agent import solve_web
-from challenges import authbypass, cmdi, idor, sqli_login, ssrf, traversal
+from challenges import authbypass, cmdi, idor, jwt_auth, sqli_login, ssrf, ssti, traversal
 
 CHALLENGES = {
     "sqli_login": sqli_login,
@@ -17,6 +17,8 @@ CHALLENGES = {
     "ssrf": ssrf,
     "idor": idor,
     "authbypass": authbypass,
+    "ssti": ssti,
+    "jwt_auth": jwt_auth,
 }
 
 
