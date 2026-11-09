@@ -43,6 +43,12 @@ Common vulnerability classes to consider:
   and miss internal hostnames or the cloud metadata IP (169.254.169.254).
 - Broken access control / IDOR: change an id or enumerate ids to read other users'
   objects, even when the endpoint looks like it's "yours".
+- Mass assignment: send extra fields the server may bind blindly (role=admin,
+  isAdmin=true) when creating or updating an object.
+- NoSQL injection: in a JSON login, replace a value with an operator object such as
+  {"$ne": ""} or {"$gt": ""} to turn an equality check into "match anything".
+- XXE: if the app parses XML, declare an external entity
+  (<!DOCTYPE d [<!ENTITY e SYSTEM "file:///flag.txt">]>) and reference &e; to read files.
 - Template injection (SSTI): if reflected input is evaluated, {{7*7}} rendering as 49
   confirms it; then read exposed variables/config objects to reach a secret.
 - Auth bypass: decode cookies/tokens (base64, JWT header.payload.signature); if they
