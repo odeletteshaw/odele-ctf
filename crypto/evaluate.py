@@ -8,7 +8,17 @@ import secrets
 import sys
 
 from agent import solve_crypto
-from challenges import base_layers, rsa_cube, rsa_fermat, xor_repeating, xor_single
+from challenges import (
+    aes_ctr_reuse,
+    base_layers,
+    rsa_common_modulus,
+    rsa_cube,
+    rsa_fermat,
+    rsa_hastad,
+    rsa_wiener,
+    xor_repeating,
+    xor_single,
+)
 
 CHALLENGES = {
     "xor_single": xor_single,
@@ -16,6 +26,10 @@ CHALLENGES = {
     "base_layers": base_layers,
     "rsa_cube": rsa_cube,
     "rsa_fermat": rsa_fermat,
+    "rsa_wiener": rsa_wiener,
+    "rsa_common_modulus": rsa_common_modulus,
+    "rsa_hastad": rsa_hastad,
+    "aes_ctr_reuse": aes_ctr_reuse,
 }
 
 
