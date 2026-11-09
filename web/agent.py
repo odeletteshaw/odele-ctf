@@ -15,12 +15,19 @@ import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.agent import SolveResult, Tool, solve  # noqa: E402
+from core.sandbox import python_tool  # noqa: E402
 
 MAX_RESPONSE_CHARS = 20_000
 REQUEST_TIMEOUT_SECONDS = 15
 
 SYSTEM_PROMPT = """You are an expert web penetration tester solving a CTF challenge.
-Your only tool is http_request, which reaches the challenge target and nothing else.
+You have two tools:
+- http_request: reaches the challenge target and nothing else.
+- run_python: runs Python offline (no network) for computation — encoding, hashing,
+  HMAC, signing or forging tokens, brute-forcing a weak secret, breaking a cipher.
+Use run_python to build any payload that needs real computation, then send it with
+http_request. For example, recover a weak JWT secret by brute force, re-sign a token
+with role=admin, then replay it.
 
 Method:
 - First map the app: fetch /, read the HTML, forms, links, comments, cookies, and
@@ -113,7 +120,8 @@ def web_tools(target: str, client: httpx.Client) -> list[Tool]:
             description="Send an HTTP request to the challenge target. Redirects are returned, not followed.",
             parameters=HTTP_PARAMETERS,
             handler=lambda args: run_http(target, client, args),
-        )
+        ),
+        python_tool(),
     ]
 
 
