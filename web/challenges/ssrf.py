@@ -17,9 +17,12 @@ FORM = """<h1>Link previewer</h1>
 
 def start(flag: str) -> tuple[object, str]:
     # The simulated network. Only these URLs "exist"; the flag sits on an internal host.
+    # The internal index links onward so a reader has a trail to follow, not a dead end.
     network = {
         "http://example.com": "<title>Example Domain</title>",
+        "http://internal": "<h1>Internal services</h1><ul><li><a href='/flag'>/flag</a></li></ul>",
         "http://internal/flag": flag,
+        "http://169.254.169.254/latest/meta-data": "flag",
         "http://169.254.169.254/latest/meta-data/flag": flag,
     }
 
