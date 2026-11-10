@@ -10,7 +10,7 @@ CATEGORIES: dict[str, dict[str, str]] = {
     "misc": {"label": "Misc", "status": "ready", "tool": "run_python"},
     "pwn": {"label": "Pwn", "status": "planned", "tool": "process_tool + pwntools"},
     "reverse": {"label": "Reverse", "status": "planned", "tool": "disassembler + angr"},
-    "forensics": {"label": "Forensics", "status": "planned", "tool": "file-analysis tools"},
+    "forensics": {"label": "Forensics", "status": "ready", "tool": "run_python"},
     "ai": {"label": "AI", "status": "ready", "tool": "send_message + run_python"},
 }
 

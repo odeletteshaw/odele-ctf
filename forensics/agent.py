@@ -1,16 +1,52 @@
-"""Forensics category — NOT YET IMPLEMENTED.
+"""Forensics category: the agent is handed an artifact (a file) encoded as base64 in the
+challenge text and must carve, parse, or extract the flag from it with run_python. Framing
+the file as embedded base64 keeps the category hermetic and text-in — same shape as crypto
+and misc, no new agent tool — while still exercising real forensic skills (file carving,
+archive spelunking, packet reassembly, LSB stego). The agent writes its own analysis code;
+run_python has the stdlib (struct, zlib, zipfile, wave, ...).
 
-Blocked on a new agent tool. The agent needs read access to a provided artifact (image,
-pcap, disk/memory dump, document) plus analysis helpers (binwalk / exiftool / strings /
-tshark and Python libs like PIL / scapy). Once a file-analysis tool exists, implement
-solve_forensics() like web/crypto. See ROADMAP.md and TODO.md.
+Challenge interface: each module in forensics/challenges/ exposes DESCRIPTION and
+make(flag) -> str (the challenge text, with the artifact embedded as base64).
+
+Usage: python forensics/agent.py challenge.txt   (or pipe the challenge on stdin)
 """
 
-SYSTEM_PROMPT = """You are solving a forensics CTF challenge.
-You can inspect the provided file and run Python (PIL, scapy available) plus analysis
-tools. Carve data, read metadata, extract hidden content (steganography), or parse a
-capture to recover the flag.
-Flags look like flag{...}. End your final message with the flag on its own line."""
+import argparse
+import sys
+from pathlib import Path
 
-# TODO: build tools/files.py (scoped read of the artifact) + analysis helpers, then
-#       def solve_forensics(artifact_path, description, ...) -> SolveResult.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from core.agent import SolveResult, solve  # noqa: E402
+from core.sandbox import python_tool  # noqa: E402
+
+SYSTEM_PROMPT = """You are solving a digital-forensics CTF challenge. The challenge text
+embeds an artifact (a file) as base64. Your tool is run_python: decode the base64 to bytes
+and analyze them. There is no network.
+
+Think like a forensic analyst: identify the file type from its magic bytes; a file is often
+longer than it looks, so check for data appended after the logical end; archives can hide
+data in comments or nested layers; packet captures (pcap) need their records parsed and
+streams reassembled; stego hides bits in the low bits of image/audio samples. The stdlib
+has what you need (struct, zlib, zipfile, wave, gzip, tarfile).
+
+Flags look like flag{...}. Print the flag and end your final message with it on its own line."""
+
+
+def solve_forensics(challenge_text: str, model: str | None = None,
+                    max_turns: int = 30) -> SolveResult:
+    return solve([python_tool()], SYSTEM_PROMPT, challenge_text, model=model, max_turns=max_turns)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("challenge", nargs="?")
+    parser.add_argument("--model", default=None)
+    args = parser.parse_args()
+    text = Path(args.challenge).read_text() if args.challenge else sys.stdin.read()
+    result = solve_forensics(text, args.model)
+    print(f"\nflag: {result.flag}  tool calls: {result.tool_calls}")
+
+
+if __name__ == "__main__":
+    main()

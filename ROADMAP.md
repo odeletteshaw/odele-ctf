@@ -5,8 +5,9 @@ CTF 各大类(方向)与其下的具体子方向,标注**现状**和**所需工�
 
 图例:✅ 已做 · ☐ 待做 · ⚠ 需新工具
 
-**规划主线**:web/crypto 能持续扩充是因为工具齐备(`http_request` + `run_python`)。
-pwn/reverse/forensics 卡在工具上——开这些大类前,得先给 agent 建对应的新工具。
+**规划主线**:web/crypto/misc/forensics/ai 已就绪——它们的工具齐备(`http_request`、
+`run_python`、`send_message`;forensics 把文件 base64 嵌进题面,也走 run_python)。
+pwn/reverse 还卡在工具上——开这两类前,得先给 agent 建对应的新工具(交互式进程 / 反汇编)。
 
 ---
 
@@ -64,17 +65,20 @@ hermetic:附一个有漏洞的二进制,agent 在本地沙箱里打,拿 shell / 
 | 保护 | 混淆 · 加壳(UPX) · 反调试 |
 | VM/字节码 | 自定义 VM · .pyc · Java/.NET · Go/Rust · WASM |
 
-## 5. Forensics / 取证  ⚠ 需新工具
+## 5. Forensics / 取证  — 工具:run_python(齐)
 
-**所需工具**:文件只读 + 分析库(PIL / scapy)+ 命令工具(binwalk / exiftool / strings / tshark)。
+做法:把文件 **base64 嵌进题面**,agent 用 run_python 解析/雕刻——无需新工具,全程 hermetic。
+注意**内嵌附件要小**(run_python 无状态,大附件会被反复粘贴耗光回合)。
 
-| 方向 | 具体 |
-|------|------|
-| 文件 | 文件雕刻/恢复 · 元数据 · magic bytes |
-| 隐写 | 图像 LSB · 音频频谱 · steghide/zsteg |
-| 流量 | pcap 分析 · 提取文件/凭据 · 协议还原 |
-| 内存 | volatility 内存取证 |
-| 文档 | PDF · Office 宏 |
+| 方向 | 具体 | 状态 |
+|------|------|------|
+| 文件雕刻 | IEND 后追加 ✅ · magic bytes ☐ · polyglot ☐ | |
+| 归档 | 嵌套 zip + comment ✅ · gzip/tar 套娃 ☐ | |
+| 流量 | pcap + TCP 乱序重组 ✅ · 协议还原/提取文件 ☐ | |
+| 音频隐写 | WAV LSB ⚠(能力边界) · 频谱 ☐ | ⚠ |
+| 图像隐写 ⚠ | 图像 LSB · 元数据/EXIF | ⚠ 需 Pillow |
+| 大件 ⚠ | 磁盘镜像 · volatility 内存 · steghide/zsteg | ⚠ 需 files_tool + 外部库 |
+| 文档 | PDF · Office 宏 | ☐ |
 
 ## 6. Misc / 杂项  — 工具:run_python(齐,部分子方向需交互工具)
 

@@ -41,7 +41,7 @@ def _benchmark(category: str, name: str) -> Built:
             client.close()
 
         return flag, tools, agent.SYSTEM_PROMPT, user, cleanup
-    if category in ("crypto", "misc"):  # text-in, run_python-only categories
+    if category in ("crypto", "misc", "forensics"):  # text-in, run_python-only categories
         return flag, [python_tool()], agent.SYSTEM_PROMPT, challenge.make(flag), lambda: None
     if category == "ai":  # live guarded chatbot reached via send_message
         defender = challenge.make(flag)
