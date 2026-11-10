@@ -98,5 +98,18 @@ benchmark 失去意义。
 
 ## 当前状态
 
-web：14 道题（全部脚本验证可解；DeepSeek 除 `ecb_paste` 外全解）。
-crypto：11 道题，DeepSeek 全解。
+已就绪(ready)的四个类型:
+
+- **web**:17 道题(全部脚本验证可解;DeepSeek 除 `ecb_paste` 外全解)。
+- **crypto**:12 道题,DeepSeek 全解。
+- **misc**:3 道题(brainfuck、compression_layers、xor_sequence),DeepSeek 全解。
+- **ai**(提示安全红队):5 关阶梯。naive / output_filter / input_filter 可解;firm 与
+  both_filters 是**能力边界**(前者纯越狱,后者双过滤天花板——原理上可解但 DeepSeek 当前打不穿)。
+  判结果要多跑(`ai/evaluate.py --runs N`),因为靶子本身是 LLM、多轮随机。
+
+脚手架待开发:pwn、reverse、forensics(见各自 `TODO.md`)。
+
+> AI 类的血泪:把一个值叫作「secret flag」会让防御模型(DeepSeek)反射性死守,于是本该考
+> **机械过滤器**的几关变成了考「能不能越狱模型」。修法:考过滤器的几关让防御模型**明确配合**
+> (把值描述成可给的、不敏感的 reference code),挑战点就回到过滤器本身;只有 firm/both_filters
+> 才真正考模型拒答。
