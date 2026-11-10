@@ -50,10 +50,26 @@ class SolveResult:
 # .function.name / .function.arguments). Real runs use OpenAI; tests inject a fake.
 ChatFn = Callable[[list[dict[str, Any]], list[dict[str, Any]]], Any]
 
+# An event sink receives structured dicts describing each step (for a GUI or logger).
+# A guidance source is polled before each model turn; any text it returns is injected
+# into the conversation as a supervisor note. Both are optional and default to no-ops.
+EventFn = Callable[[dict[str, Any]], None]
+GuidanceFn = Callable[[], str | None]
+
 
 def run_loop(
-    chat: ChatFn, tools: list[Tool], system: str, user: str, max_turns: int
+    chat: ChatFn,
+    tools: list[Tool],
+    system: str,
+    user: str,
+    max_turns: int,
+    on_event: EventFn | None = None,
+    guidance: GuidanceFn | None = None,
 ) -> tuple[str, int]:
+    def emit(event: dict[str, Any]) -> None:
+        if on_event:
+            on_event(event)
+
     handlers = {tool.name: tool.handler for tool in tools}
     schemas = [tool.schema() for tool in tools]
     messages: list[dict[str, Any]] = [
@@ -63,11 +79,18 @@ def run_loop(
     final_text = ""
     tool_calls = 0
     for _ in range(max_turns):
+        # Fold in any supervisor guidance before the model's next turn.
+        if guidance and (note := guidance()):
+            messages.append({"role": "user", "content": f"[Supervisor guidance] {note}"})
+            print(f"[guidance] {note}", flush=True)
+            emit({"type": "guidance", "text": note})
+
         message = chat(messages, schemas)
         assistant: dict[str, Any] = {"role": "assistant", "content": message.content or ""}
         if message.content:
             print(f"[agent] {message.content}", flush=True)
             final_text = message.content
+            emit({"type": "agent", "text": message.content})
         if not message.tool_calls:
             messages.append(assistant)
             break
@@ -88,8 +111,10 @@ def run_loop(
                 output = f"Error: arguments were not valid JSON: {error}"
             else:
                 print(f"[{call.function.name}] {args}", flush=True)
+                emit({"type": "tool_call", "name": call.function.name, "args": args})
                 handler = handlers.get(call.function.name)
                 output = handler(args) if handler else f"Error: unknown tool {call.function.name}"
+            emit({"type": "tool_result", "name": call.function.name, "output": output})
             messages.append({"role": "tool", "tool_call_id": call.id, "content": output})
     return final_text, tool_calls
 
@@ -110,11 +135,16 @@ def solve(
     user_prompt: str,
     model: str | None = None,
     max_turns: int = 30,
+    on_event: EventFn | None = None,
+    guidance: GuidanceFn | None = None,
+    flag_pattern: "re.Pattern[str] | None" = None,
 ) -> SolveResult:
     if not config.API_KEY:
         raise RuntimeError("No API key. Set DEEPSEEK_API_KEY (or CTF_API_KEY), e.g. in .env")
     client = OpenAI(base_url=config.API_BASE, api_key=config.API_KEY)
     chat = _openai_chat_fn(client, model or config.DEFAULT_MODEL)
-    final_text, tool_calls = run_loop(chat, tools, system_prompt, user_prompt, max_turns)
-    flags = FLAG_PATTERN.findall(final_text)
+    final_text, tool_calls = run_loop(
+        chat, tools, system_prompt, user_prompt, max_turns, on_event=on_event, guidance=guidance
+    )
+    flags = (flag_pattern or FLAG_PATTERN).findall(final_text)
     return SolveResult(flags[-1] if flags else None, final_text, tool_calls)
