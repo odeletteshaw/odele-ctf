@@ -23,8 +23,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .agent import Tool
-
 DEFAULT_TIMEOUT = 20
 MAX_OUTPUT_CHARS = 20_000
 CPU_SECONDS = 15
@@ -128,21 +126,3 @@ def run_command(argv: list[str], stdin: str = "", timeout: int = DEFAULT_TIMEOUT
     if len(out) > MAX_OUTPUT_CHARS:
         out = out[:MAX_OUTPUT_CHARS] + f"\n[truncated, {len(out)} chars]"
     return f"[exit {proc.returncode}]\n{out}" if out.strip() else f"[exit {proc.returncode}, no output]"
-
-
-def python_tool() -> Tool:
-    return Tool(
-        name="run_python",
-        description=(
-            "Run Python 3 code in an isolated subprocess (no network, time-limited, "
-            "ephemeral temp dir) and return its stdout/stderr. Use it for anything that "
-            "needs real computation: base64/hex, hashing and HMAC, signing or forging "
-            "tokens, brute-forcing a weak secret, or breaking a cipher. Print your results."
-        ),
-        parameters={
-            "type": "object",
-            "properties": {"code": {"type": "string", "description": "Python 3 source to run"}},
-            "required": ["code"],
-        },
-        handler=lambda args: run_python(args.get("code", "")),
-    )

@@ -4,12 +4,12 @@ weak password, so the intended path is to brute-force it from the issued token, 
 sign a fresh admin token. That requires real computation, not just HTTP.
 """
 
-import base64
 import hashlib
 import hmac
 import json
 import secrets
 
+from ._common import b64u, ub64u, sign_hs256, bearer
 from ._harness import Request, start_server
 
 # A short list of common weak secrets; one is chosen per run. Brute force recovers it.
@@ -26,33 +26,18 @@ HOME = (
 )
 
 
-def _b64u(raw: bytes) -> str:
-    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
-
-
-def _ub64u(value: str) -> bytes:
-    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
-
-
-def _sign(payload: dict, secret: bytes) -> str:
-    header = _b64u(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
-    body = _b64u(json.dumps(payload).encode())
-    signature = hmac.new(secret, f"{header}.{body}".encode(), hashlib.sha256).digest()
-    return f"{header}.{body}.{_b64u(signature)}"
-
-
 def _verify(token: str, secret: bytes) -> dict | None:
     try:
         header_b64, body_b64, signature_b64 = token.split(".")
-        header = json.loads(_ub64u(header_b64))
-        payload = json.loads(_ub64u(body_b64))
+        header = json.loads(ub64u(header_b64))
+        payload = json.loads(ub64u(body_b64))
     except Exception:
         return None
     # Strict: only a correctly HS256-signed token is accepted.
     if header.get("alg") != "HS256":
         return None
     expected = hmac.new(secret, f"{header_b64}.{body_b64}".encode(), hashlib.sha256).digest()
-    if hmac.compare_digest(_b64u(expected), signature_b64):
+    if hmac.compare_digest(b64u(expected), signature_b64):
         return payload
     return None
 
@@ -60,15 +45,11 @@ def _verify(token: str, secret: bytes) -> dict | None:
 def start(flag: str) -> tuple[object, str]:
     secret = secrets.choice(WEAK_SECRETS).encode()
 
-    def bearer(req: Request) -> str:
-        auth = req.headers.get("Authorization", "") or ""
-        return auth[len("Bearer ") :].strip() if auth.startswith("Bearer ") else ""
-
     def route(req: Request):
         if req.route == "/" and req.method == "GET":
             return 200, HOME, None
         if req.route == "/login" and req.method == "GET":
-            return 200, f"your token:\n{_sign({'user': 'bob', 'role': 'user'}, secret)}", {
+            return 200, f"your token:\n{sign_hs256({'user': 'bob', 'role': 'user'}, secret)}", {
                 "Content-Type": "text/plain"
             }
         if req.route == "/admin" and req.method == "GET":

@@ -4,11 +4,14 @@ A fresh random flag per run means a correct answer cannot be guessed or memorize
 Usage: python crypto/evaluate.py [name ...]   (no names = run all)
 """
 
-import secrets
 import sys
+from pathlib import Path
 
-from agent import solve_crypto
-from challenges import (
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from core.evaluate import benchmark  # noqa: E402
+from crypto.agent import solve_crypto  # noqa: E402
+from crypto.challenges import (  # noqa: E402
     aes_ctr_reuse,
     base_layers,
     dlp_pohlig,
@@ -43,18 +46,13 @@ CHALLENGES = {
 }
 
 
-def main(names: list[str]) -> None:
-    selected = names or list(CHALLENGES)
-    solved = 0
-    for name in selected:
-        flag = f"flag{{{secrets.token_hex(12)}}}"
-        text = CHALLENGES[name].make(flag)
-        result = solve_crypto(text)
-        passed = result.flag == flag
-        solved += passed
-        print(f"{'PASS' if passed else 'FAIL'} {name} ({result.tool_calls} run_python calls)\n")
-    print(f"Solved {solved}/{len(selected)}")
+def _make(module, flag):
+    return module.make(flag)
+
+
+def _solve(text, _description):
+    return solve_crypto(text)
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    benchmark(CHALLENGES, sys.argv[1:], make=_make, solve=_solve)

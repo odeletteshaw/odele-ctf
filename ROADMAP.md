@@ -120,5 +120,5 @@ flag XOR 混淆编译进去。agent 用 `objdump -d -s` 反汇编、沙箱跑二
 
 - 加 web/crypto 子方向:在 `web/challenges/` 或 `crypto/challenges/` 加一文件(接口见 CLAUDE.md),
   注册进 `evaluate.py`,先脚本验证可解再跑模型。
-- 开新大类:先建该方向的 agent 工具(放未来的 `tools/`),再照 web/crypto 的模式建 `<大类>/agent.py`
+- 开新大类:先建该方向的 agent 工具(放 `tools/`),再照 web/crypto 的模式建 `<大类>/agent.py`
   + `challenges/` + `evaluate.py`。

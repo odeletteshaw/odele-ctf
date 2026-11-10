@@ -4,20 +4,17 @@ http_request tool against the real local challenge. No API key, no network to a 
 Usage: python web/test_offline.py
 """
 
-import json
 import secrets
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
-import agent  # sets up sys.path so core/ is importable
-from challenges import sqli_login
-from core.agent import FLAG_PATTERN, run_loop
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-
-def _tool_call(call_id: str, name: str, args: dict) -> SimpleNamespace:
-    return SimpleNamespace(
-        id=call_id,
-        function=SimpleNamespace(name=name, arguments=json.dumps(args)),
-    )
+from core.agent import FLAG_PATTERN, run_loop  # noqa: E402
+from core.offline import tool_call  # noqa: E402
+from web.agent import SYSTEM_PROMPT, new_http_client, web_tools  # noqa: E402
+from web.challenges import sqli_login  # noqa: E402
 
 
 def main() -> None:
@@ -31,7 +28,7 @@ def main() -> None:
             return SimpleNamespace(
                 content="Trying an auth bypass.",
                 tool_calls=[
-                    _tool_call(
+                    tool_call(
                         "c1",
                         "http_request",
                         {
@@ -47,10 +44,10 @@ def main() -> None:
         found = FLAG_PATTERN.search(last_tool)
         return SimpleNamespace(content=f"Done.\n{found.group(0)}", tool_calls=None)
 
-    client = agent.new_http_client()
+    client = new_http_client()
     try:
         final_text, calls = run_loop(
-            fake_chat, agent.web_tools(url, client), agent.SYSTEM_PROMPT, "test", max_turns=10
+            fake_chat, web_tools(url, client), SYSTEM_PROMPT, "test", max_turns=10
         )
     finally:
         client.close()

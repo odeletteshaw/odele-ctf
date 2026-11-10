@@ -16,7 +16,7 @@ from typing import Any, Callable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.agent import Tool  # noqa: E402
-from core.sandbox import python_tool  # noqa: E402
+from tools.sandbox import python_tool  # noqa: E402
 
 Built = tuple[str | None, list[Tool], str, str, Callable[[], None]]
 

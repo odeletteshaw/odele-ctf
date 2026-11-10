@@ -4,21 +4,24 @@ A fresh random flag per run means a correct answer cannot be guessed or memorize
 Usage: python web/evaluate.py [name ...]   (no names = run all)
 """
 
-import secrets
 import sys
+from pathlib import Path
 
-from agent import solve_web
-from challenges import (
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from core.evaluate import benchmark  # noqa: E402
+from web.agent import solve_web  # noqa: E402
+from web.challenges import (  # noqa: E402
     authbypass,
     cbc_flip,
     cmdi,
     ecb_paste,
     graphql,
     idor,
-    ldap_injection,
-    lfi,
     jwt_auth,
     jwt_weak,
+    ldap_injection,
+    lfi,
     mass_assignment,
     nosqli,
     sqli_login,
@@ -49,22 +52,17 @@ CHALLENGES = {
 }
 
 
-def main(names: list[str]) -> None:
-    selected = names or list(CHALLENGES)
-    solved = 0
-    for name in selected:
-        challenge = CHALLENGES[name]
-        flag = f"flag{{{secrets.token_hex(12)}}}"
-        server, url = challenge.start(flag)
-        try:
-            result = solve_web(url, challenge.DESCRIPTION)
-        finally:
-            server.shutdown()
-        passed = result.flag == flag
-        solved += passed
-        print(f"{'PASS' if passed else 'FAIL'} {name} ({result.tool_calls} requests)\n")
-    print(f"Solved {solved}/{len(selected)}")
+def _make(module, flag):
+    return module.start(flag)  # (server, url)
+
+
+def _solve(server_and_url, description):
+    return solve_web(server_and_url[1], description)
+
+
+def _cleanup(server_and_url):
+    server_and_url[0].shutdown()
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    benchmark(CHALLENGES, sys.argv[1:], make=_make, solve=_solve, cleanup=_cleanup)

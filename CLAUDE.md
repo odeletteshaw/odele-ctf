@@ -9,10 +9,15 @@
 core/        跨题型通用的底座
   config.py    厂商/模型配置；加载 .env（真实环境变量优先于 .env）
   agent.py     Tool 数据类、run_loop、solve()、flag 提取（FLAG_PATTERN）
-  sandbox.py   run_python：隔离子进程 + python_tool() 工厂
+  sandbox.py   沙箱引擎：run_python / run_command（隔离子进程、禁网、rlimit）
+  evaluate.py  benchmark()：各题型共享的 PASS/FAIL 评测循环
+  offline.py   tool_call()：离线测试（无 API key）的假模型 helper
+tools/        agent 工具（「能力」），每个题型从这里组装
+  sandbox.py python_tool() · http.py http_tool() · process.py process_tool()
+  chat.py message_tool() · bin.py disassemble_tool()/run_binary_tool()
 web/           Web 题型：HTTP 靶题
   agent.py       prompt + 工具组装（http_request + run_python）；origin 锁定
-  challenges/    一题一文件；_harness.py 是共享的 HTTP server
+  challenges/    一题一文件；_harness.py 是共享 HTTP server，_common.py 是出题 helper
   evaluate.py    用随机 flag 跑 agent 过一遍靶题；输出 PASS/FAIL
   test_offline.py  用脚本化的假模型驱动循环（不需要 API key）
 crypto/        密码学题型：纯计算（只给 run_python）
@@ -41,13 +46,14 @@ pwn/ misc/ forensics/ ai/ reverse/   其余五类，同 web/crypto 结构（各�
 解题库。agent 要在 `run_python` 里自己写解题代码。共享解题库等于把答案送给 agent，会让这套
 benchmark 失去意义。
 
-**计划中（已商定，尚未实现）：** 一个顶层 `tools/` 包，用工厂函数放 agent 工具
-（`tools/sandbox.py: python_tool()`、`tools/http.py: http_tool(target)`、未来的
-`files_tool`、`process_tool`），让每个题型从同一个菜单里组装。另有两项重构延后：把重复的
-**出题 helper**（JWT 签验、base64url、`bearer()`、HTTP harness）抽到各题型的
-`challenges/_common.py`；把几乎重复的 `evaluate.py` / `test_offline.py` / `sys.path`
-引导收进 `core`。务必让这三类保持分开：agent 工具（`tools/`）、出题 helper（在出题侧，agent
-永远碰不到）、评测框架（`core/`）。
+**目录职责（已重构）：** agent 工具集中在顶层 `tools/` 包，用工厂函数从同一个菜单组装
+（`tools/sandbox.py: python_tool()`、`tools/http.py: http_tool(target)`、`tools/process.py:
+process_tool(proc)`、`tools/chat.py: message_tool(send)`、`tools/bin.py:
+disassemble_tool(binary)` / `run_binary_tool(binary)`）。出题侧共享 helper 放在各题型的
+`challenges/_common.py`（web 的 JWT/base64url/bearer、reverse 的编译 helper——agent 永远
+碰不到）。评测框架收在 `core/`：`core/evaluate.py: benchmark()` 通用 PASS/FAIL 循环、
+`core/offline.py: tool_call()` 离线测试 helper。三类保持分开：agent 工具（`tools/`）、出题
+helper（`challenges/_common.py`）、评测框架（`core/`）。
 
 ## 出题规范
 

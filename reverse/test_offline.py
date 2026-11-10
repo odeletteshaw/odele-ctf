@@ -4,7 +4,6 @@ disassemble and run_binary tools against a real compiled crackme. No API key.
 Usage: python reverse/test_offline.py
 """
 
-import json
 import secrets
 import sys
 from pathlib import Path
@@ -13,12 +12,10 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.agent import FLAG_PATTERN, run_loop  # noqa: E402
-from reverse.agent import disassemble_tool, reverse_tools, run_binary_tool  # noqa: E402
+from core.offline import tool_call  # noqa: E402
+from reverse.agent import reverse_tools  # noqa: E402
 from reverse.challenges import run_me  # noqa: E402
-
-
-def _tool_call(call_id: str, name: str, args: dict) -> SimpleNamespace:
-    return SimpleNamespace(id=call_id, function=SimpleNamespace(name=name, arguments=json.dumps(args)))
+from tools.bin import disassemble_tool, run_binary_tool  # noqa: E402
 
 
 def main() -> None:
@@ -39,12 +36,12 @@ def main() -> None:
             if state["turn"] == 1:
                 return SimpleNamespace(
                     content="Disassembling.",
-                    tool_calls=[_tool_call("c1", "disassemble", {})],
+                    tool_calls=[tool_call("c1", "disassemble", {})],
                 )
             if state["turn"] == 2:
                 return SimpleNamespace(
                     content="Running it.",
-                    tool_calls=[_tool_call("c2", "run_binary", {"stdin": ""})],
+                    tool_calls=[tool_call("c2", "run_binary", {"stdin": ""})],
                 )
             last_tool = [m for m in messages if m["role"] == "tool"][-1]["content"]
             found = FLAG_PATTERN.search(last_tool)

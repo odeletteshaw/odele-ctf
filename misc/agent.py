@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.agent import SolveResult, solve  # noqa: E402
-from core.sandbox import python_tool  # noqa: E402
+from tools.sandbox import python_tool  # noqa: E402
 
 SYSTEM_PROMPT = """You are solving a miscellaneous CTF challenge.
 Your tool is run_python: write Python to work through the puzzle. There is no network.

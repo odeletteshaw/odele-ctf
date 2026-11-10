@@ -18,7 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.agent import SolveResult, solve  # noqa: E402
-from core.sandbox import python_tool  # noqa: E402
+from tools.sandbox import python_tool  # noqa: E402
 
 SYSTEM_PROMPT = """You are solving a digital-forensics CTF challenge. The challenge text
 embeds an artifact (a file) as base64. Your tool is run_python: decode the base64 to bytes

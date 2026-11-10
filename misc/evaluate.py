@@ -4,33 +4,29 @@ them (each exposing DESCRIPTION and make(flag) -> str). See TODO.md.
 Usage: python misc/evaluate.py [name ...]
 """
 
-import secrets
 import sys
+from pathlib import Path
 
-from agent import solve_misc
-from challenges import brainfuck, compression_layers, xor_sequence
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-CHALLENGES: dict = {
+from core.evaluate import benchmark  # noqa: E402
+from misc.agent import solve_misc  # noqa: E402
+from misc.challenges import brainfuck, compression_layers, xor_sequence  # noqa: E402
+
+CHALLENGES = {
     "brainfuck": brainfuck,
     "compression_layers": compression_layers,
     "xor_sequence": xor_sequence,
 }
 
 
-def main(names: list[str]) -> None:
-    if not CHALLENGES:
-        print("no misc challenges yet — see misc/TODO.md")
-        return
-    selected = names or list(CHALLENGES)
-    solved = 0
-    for name in selected:
-        flag = f"flag{{{secrets.token_hex(12)}}}"
-        result = solve_misc(CHALLENGES[name].make(flag))
-        passed = result.flag == flag
-        solved += passed
-        print(f"{'PASS' if passed else 'FAIL'} {name} ({result.tool_calls} run_python calls)\n")
-    print(f"Solved {solved}/{len(selected)}")
+def _make(module, flag):
+    return module.make(flag)
+
+
+def _solve(text, _description):
+    return solve_misc(text)
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    benchmark(CHALLENGES, sys.argv[1:], make=_make, solve=_solve)
