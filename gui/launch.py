@@ -19,7 +19,7 @@ from gui.manager import Manager  # noqa: E402
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("category", nargs="?", choices=["web", "crypto"])
+    parser.add_argument("category", nargs="?", choices=["web", "crypto", "reverse"])
     parser.add_argument("challenge", nargs="?")
     args = parser.parse_args()
 

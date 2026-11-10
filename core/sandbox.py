@@ -90,6 +90,46 @@ def run_python(code: str, timeout: int = DEFAULT_TIMEOUT) -> str:
     return f"[exit {proc.returncode}]\n{out}" if out.strip() else f"[exit {proc.returncode}, no output]"
 
 
+def run_command(argv: list[str], stdin: str = "", timeout: int = DEFAULT_TIMEOUT) -> str:
+    """Run an arbitrary command (e.g. a compiled challenge binary) in the same sandbox
+    run_python uses: no network, CPU/file rlimits, a wall-clock timeout, and an ephemeral
+    temp cwd/HOME. `stdin` is fed to the process; stdout/stderr/exit code come back as text.
+    Used by the reverse category to run a crackme binary."""
+    workdir = Path(tempfile.mkdtemp(prefix="ctf-sbx-"))
+    command = _wrap_no_network([str(a) for a in argv])
+    env = {
+        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+        "HOME": str(workdir),
+        "TMPDIR": str(workdir),
+        "LC_ALL": "C.UTF-8",
+        "LANG": "C.UTF-8",
+    }
+    try:
+        proc = subprocess.run(
+            command,
+            cwd=workdir,
+            env=env,
+            input=stdin,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            preexec_fn=_set_limits,
+        )
+    except subprocess.TimeoutExpired:
+        return f"[timed out after {timeout}s]"
+    except Exception as error:  # sandbox wrapper missing/unusable, etc.
+        return f"[could not run: {error}]"
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+    out = proc.stdout
+    if proc.stderr:
+        out += ("\n" if out else "") + "[stderr]\n" + proc.stderr
+    if len(out) > MAX_OUTPUT_CHARS:
+        out = out[:MAX_OUTPUT_CHARS] + f"\n[truncated, {len(out)} chars]"
+    return f"[exit {proc.returncode}]\n{out}" if out.strip() else f"[exit {proc.returncode}, no output]"
+
+
 def python_tool() -> Tool:
     return Tool(
         name="run_python",

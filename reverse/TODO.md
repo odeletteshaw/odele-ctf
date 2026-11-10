@@ -1,19 +1,36 @@
-# Reverse — TODO
+# Reverse / 逆向 — TODO
 
-⚠ **先建工具**:反汇编/反编译(objdump / radare2 / Ghidra headless)+ 可选**符号执行 angr**
-(自动求"输入→flag")+ 沙箱跑二进制。然后实现 `reverse/agent.py: solve_reverse()`。
+✅ **已就绪**。做法(hermetic,同 pwn 模拟漏洞):不反汇编第三方/恶意二进制,而是把**自己写的小 C
+crackme 在 `make(flag)` 时用 clang 编译**,flag XOR 混淆编译进去。agent 用三个工具:
+`disassemble`(`objdump -d -s`,反汇编 + 段数据)、`run_binary`(沙箱跑二进制、读输出)、
+`run_python`(解码/求逆/构造输入)。
 
-## 工具清单
-- [ ] `tools/disasm.py`(objdump / r2 封装)
-- [ ] 可选:`tools/symbolic.py`(angr)
-- [ ] 复用沙箱跑二进制(已有 run_python,可扩 process 工具)
-- [ ] solve_reverse + reverse/evaluate.py
+## 已完成
+- [x] `reverse/target.py`:`ReverseTarget`(编译出的二进制 + 临时目录清理)
+- [x] `reverse/challenges/_common.py`:出题侧 helper(`compile_c` 用 clang -O0 编译、
+      `xor_c_array`、`decode_loop`);agent 永远碰不到
+- [x] `reverse/agent.py`:`disassemble_tool` / `run_binary_tool` / `reverse_tools` /
+      `solve_reverse` + SYSTEM_PROMPT(含 arm64 objdump 语法说明:立即数是十进制、`eor`=XOR、
+      常量数据在 `__const`/`__cstring`)
+- [x] `reverse/evaluate.py` + `reverse/test_offline.py`
+- [x] `core/sandbox.py`:新增 `run_command(argv, stdin)`,与 run_python 同沙箱跑任意二进制
+- [x] 三道题(脚本验证可解 + DeepSeek 全解):
+  - **run_me** — 地板:二进制直接 XOR 解码打印 flag,验证「编译→沙箱跑→提取 flag」管线
+  - **crackme_xor** — flag XOR 混淆 + strcmp 密码门;key 和 XOR 键都能从反汇编恢复
+  - **crackme_serial** — keygen:加权和校验 `sum(s[i]*(i+1)) == TARGET`,构造合法 serial
+- [x] 接入 `core/catalog.py`(ready)、`gui/builder.py`(reverse 分支)、`gui/launch.py`
 
-## 子方向(靶题)
-- [ ] crackme:静态分析校验逻辑,反推正确输入
-- [ ] keygen:根据算法生成有效序列号
-- [ ] 自定义 VM / 字节码还原
+## 接口
+`DESCRIPTION: str` + `make(flag) -> ReverseTarget`(一个编译好的二进制)。工具绑定到
+`target.binary`,agent 看不到路径本身。
+
+## 以后可加
+- [ ] **符号执行 angr**:z3/capstone 有 py3.14 wheel、装得上;做「长 key / 复杂约束、暴力不可行」
+      的 crackme 才有必要(当前三道小 crackme 用 run_python 求逆/暴力就够)
+- [ ] crackme:多步变换、位运算混合(现 `crackme_xor` 是单步 XOR)
+- [ ] 自定义 VM / 字节码还原(玩具 VM)
 - [ ] 加壳(UPX)脱壳 + 反调试绕过
-- [ ] .pyc / Java / Go 二进制
+- [ ] .pyc / Java / Go 二进制(需对应工具链)
 
-> 起步建议:简单 crackme(比较一个变换后的输入),angr 能直接秒。
+> 注:二进制是我们自己在 make 时编译的小 crackme,跑在 run_python 同款沙箱(禁网 + rlimit)。
+> 不反汇编第三方/恶意二进制,不碰真实系统。

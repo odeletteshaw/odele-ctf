@@ -5,10 +5,11 @@ CTF 各大类(方向)与其下的具体子方向,标注**现状**和**所需工�
 
 图例:✅ 已做 · ☐ 待做 · ⚠ 需新工具
 
-**规划主线**:web/crypto/misc/forensics/ai/pwn 六类已就绪。做法都是「给对的工具 + hermetic 模拟
-漏洞」:web 用 `http_request`;crypto/misc/forensics 用 `run_python`(forensics 把文件 base64
+**规划主线**:web/crypto/misc/forensics/ai/pwn/reverse 七类已就绪。做法都是「给对的工具 + hermetic
+模拟漏洞」:web 用 `http_request`;crypto/misc/forensics 用 `run_python`(forensics 把文件 base64
 嵌进题面);ai 用 `send_message` 打模拟的带防御聊天机器人;pwn 用 `send_input` 打模拟的有漏洞
-进程。只剩 **reverse** 还卡在工具上——它需要反汇编/反编译 + 符号执行(angr),是更重的一步。
+进程;reverse 用 `disassemble`(objdump)+ `run_binary` 打自己编译的小 C crackme。符号执行
+(angr)装得上但暂未引入,是可选的重步。
 
 ---
 
@@ -56,17 +57,18 @@ CTF 各大类(方向)与其下的具体子方向,标注**现状**和**所需工�
 
 > 真·跑二进制(拿真实 shell)不在 hermetic 范围;要做得另起受控沙箱(qemu/ptrace),成本高。
 
-## 4. Reverse / 逆向  ⚠ 需新工具
+## 4. Reverse / 逆向  — 工具:disassemble + run_binary + run_python(齐)
 
-**所需工具**:反汇编/反编译(objdump / radare2 / Ghidra headless)、**符号执行 angr**
-(自动求"输入→flag")、沙箱跑二进制。
+做法(hermetic,同 pwn 模拟漏洞):**自己写的小 C crackme 在 `make(flag)` 时用 clang 编译**,
+flag XOR 混淆编译进去。agent 用 `objdump -d -s` 反汇编、沙箱跑二进制、run_python 解码/求逆。
 
-| 方向 | 具体 |
-|------|------|
-| 静态 | 读汇编/反编译 · 理解算法 |
-| crackme/keygen | 找通过校验的输入 |
-| 保护 | 混淆 · 加壳(UPX) · 反调试 |
-| VM/字节码 | 自定义 VM · .pyc · Java/.NET · Go/Rust · WASM |
+| 方向 | 具体 | 状态 |
+|------|------|------|
+| 静态 | 读汇编/反编译 · 理解算法 | ✅ 3 题(run_me / crackme_xor / crackme_serial) |
+| crackme/keygen | 找通过校验的输入 | ✅(crackme_xor / crackme_serial) |
+| 符号执行 ⚠ | angr 自动求"输入→flag" | ⚠ angr 装得上,暂未引入(留给长 key/复杂约束) |
+| 保护 | 混淆 · 加壳(UPX) · 反调试 | ☐ |
+| VM/字节码 | 自定义 VM · .pyc · Java/.NET · Go/Rust · WASM | ☐ |
 
 ## 5. Forensics / 取证  — 工具:run_python(齐)
 

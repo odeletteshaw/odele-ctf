@@ -52,6 +52,10 @@ def _benchmark(category: str, name: str) -> Built:
         proc = challenge.make(flag)
         tools = agent.pwn_tools(proc)
         return flag, tools, agent.SYSTEM_PROMPT, challenge.DESCRIPTION, lambda: None
+    if category == "reverse":  # compiled crackme reached via disassemble + run_binary
+        target = challenge.make(flag)
+        tools = agent.reverse_tools(target)
+        return flag, tools, agent.SYSTEM_PROMPT, challenge.DESCRIPTION, target.cleanup
     raise ValueError(f"unsupported category: {category}")
 
 
