@@ -11,6 +11,8 @@ from agent import solve_crypto
 from challenges import (
     aes_ctr_reuse,
     base_layers,
+    dlp_pohlig,
+    ecdsa_nonce_reuse,
     rsa_common_modulus,
     rsa_cube,
     rsa_fermat,
@@ -30,6 +32,8 @@ CHALLENGES = {
     "rsa_common_modulus": rsa_common_modulus,
     "rsa_hastad": rsa_hastad,
     "aes_ctr_reuse": aes_ctr_reuse,
+    "ecdsa_nonce_reuse": ecdsa_nonce_reuse,
+    "dlp_pohlig": dlp_pohlig,
 }
 
 

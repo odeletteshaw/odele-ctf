@@ -26,7 +26,12 @@ Useful techniques:
 - RSA: if e is small (e.g. 3) and the message is short, the ciphertext may be a perfect
   e-th power, so take the integer e-th root. If the modulus is small or its primes are
   close together, factor it (trial division or Fermat), then d = e^-1 mod phi(n).
-- pycryptodome (Crypto.*) and hashlib are available in the sandbox.
+- pycryptodome (Crypto.*), sympy, and hashlib are available in the sandbox. Reach for
+  library routines rather than writing slow searches: sympy.discrete_log (fast when the
+  group order is smooth), sympy.factorint, sympy.ntheory.residue_ntheory, etc.
+
+The sandbox kills any run after ~15 seconds of CPU, so never brute-force a large space
+by hand — pick the algorithm or library that makes the problem small first.
 
 Flags look like flag{...}. Print the flag you recover and end your final message with
 it on its own line."""
