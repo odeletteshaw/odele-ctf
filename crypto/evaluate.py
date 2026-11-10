@@ -13,6 +13,9 @@ from challenges import (
     base_layers,
     dlp_pohlig,
     ecdsa_nonce_reuse,
+    hash_crack,
+    lcg_predict,
+    rsa_common_factor,
     rsa_common_modulus,
     rsa_cube,
     rsa_fermat,
@@ -34,6 +37,9 @@ CHALLENGES = {
     "aes_ctr_reuse": aes_ctr_reuse,
     "ecdsa_nonce_reuse": ecdsa_nonce_reuse,
     "dlp_pohlig": dlp_pohlig,
+    "rsa_common_factor": rsa_common_factor,
+    "lcg_predict": lcg_predict,
+    "hash_crack": hash_crack,
 }
 
 
