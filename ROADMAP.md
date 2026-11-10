@@ -5,9 +5,10 @@ CTF 各大类(方向)与其下的具体子方向,标注**现状**和**所需工�
 
 图例:✅ 已做 · ☐ 待做 · ⚠ 需新工具
 
-**规划主线**:web/crypto/misc/forensics/ai 已就绪——它们的工具齐备(`http_request`、
-`run_python`、`send_message`;forensics 把文件 base64 嵌进题面,也走 run_python)。
-pwn/reverse 还卡在工具上——开这两类前,得先给 agent 建对应的新工具(交互式进程 / 反汇编)。
+**规划主线**:web/crypto/misc/forensics/ai/pwn 六类已就绪。做法都是「给对的工具 + hermetic 模拟
+漏洞」:web 用 `http_request`;crypto/misc/forensics 用 `run_python`(forensics 把文件 base64
+嵌进题面);ai 用 `send_message` 打模拟的带防御聊天机器人;pwn 用 `send_input` 打模拟的有漏洞
+进程。只剩 **reverse** 还卡在工具上——它需要反汇编/反编译 + 符号执行(angr),是更重的一步。
 
 ---
 
@@ -41,17 +42,19 @@ pwn/reverse 还卡在工具上——开这两类前,得先给 agent 建对应的
 > 当前"模型逐轮发请求 + 沙箱禁网"的结构——agent 没法在一次 run_python 里循环查询我们的 oracle。
 > 要做得加一个"可被 agent 反复查询的本地 oracle 工具"。
 
-## 3. Pwn / 二进制利用  ⚠ 需新工具
+## 3. Pwn / 二进制利用  — 工具:send_input + run_python(齐)
 
-**所需工具**:沙箱里跑目标 ELF + stdin/stdout 交互(`process_tool`)、pwntools、可能 gdb。
-hermetic:附一个有漏洞的二进制,agent 在本地沙箱里打,拿 shell / 读 flag 文件。
+做法(hermetic,同 web 模拟漏洞):不跑真实 ELF/shell,而是**模拟有漏洞的进程**(虚拟栈/内存、
+玩具 printf)。agent 用 `send_input` 发 payload(hex/text)、run_python 算偏移打地址。
 
-| 方向 | 具体 |
-|------|------|
-| 栈 | 缓冲区溢出(ret2win) · canary 绕过 · ret2libc · ROP 链 · 格式化字符串 |
-| 堆 | UAF · double-free · tcache/fastbin · house-of-* |
-| shellcode | 注入 · ret2shellcode · ret2dlresolve |
-| 整数 | 整数溢出 · off-by-one |
+| 方向 | 具体 | 状态 |
+|------|------|------|
+| 栈 | 溢出相邻变量 ✅ · ret2win ✅ · 格式化字符串泄露 ✅ · canary 绕过 ☐ · ret2libc/ROP ☐ | |
+| 堆 ⚠ | UAF · double-free · tcache/fastbin · house-of-* | ⚠ 需模拟玩具分配器 |
+| shellcode ⚠ | 注入 · ret2shellcode | ⚠ 需模拟可执行内存/CPU |
+| 整数 | 整数溢出 · off-by-one | ☐ |
+
+> 真·跑二进制(拿真实 shell)不在 hermetic 范围;要做得另起受控沙箱(qemu/ptrace),成本高。
 
 ## 4. Reverse / 逆向  ⚠ 需新工具
 

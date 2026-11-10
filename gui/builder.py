@@ -48,6 +48,10 @@ def _benchmark(category: str, name: str) -> Built:
         tools = agent.redteam_tools(defender)
         user = agent.attacker_prompt(challenge.DESCRIPTION)
         return flag, tools, agent.SYSTEM_PROMPT, user, defender.close
+    if category == "pwn":  # simulated vulnerable process reached via send_input
+        proc = challenge.make(flag)
+        tools = agent.pwn_tools(proc)
+        return flag, tools, agent.SYSTEM_PROMPT, challenge.DESCRIPTION, lambda: None
     raise ValueError(f"unsupported category: {category}")
 
 
