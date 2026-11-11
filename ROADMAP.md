@@ -37,7 +37,7 @@ z3(angr 在 arm64 macOS 跑不动 Mach-O,真 angr 留待 x86_64 ELF)。
 | 对称 | CTR 复用 ✅ · CBC/padding oracle ⚠(能力边界) · ECB byte-at-a-time ⚠(能力边界) · GCM nonce 复用 ✅ | |
 | 离散对数/ECC | Pohlig-Hellman ✅ · ECDSA nonce 复用 ✅ · 小子群/无效曲线 ☐ · 偏置 nonce(HNP) ⚠ | |
 | 哈希/PRNG | 弱哈希爆破 ✅ · LCG 预测 ✅ · 梅森旋转预测 ✅ · 长度扩展 ☐ · MD5 碰撞 ☐ | |
-| 格 ⚠ | LWE · NTRU · HNP+LLL · Coppersmith | ⚠ 需 fpylll(Python 3.14 暂难装) |
+| 格 | SVP/LLL ✅(lattice_svp) · LWE ☐ · NTRU ☐ · HNP+LLL ☐ · Coppersmith ☐ | fpylll 已装(3.14 有 wheel) |
 
 > 注:需交互式 oracle 的攻击(padding oracle、RSA LSB oracle、ECB byte-at-a-time)不适合
 > 当前"模型逐轮发请求 + 沙箱禁网"的结构——agent 没法在一次 run_python 里循环查询我们的 oracle。

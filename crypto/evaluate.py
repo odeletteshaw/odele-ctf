@@ -21,6 +21,7 @@ from crypto.challenges import (  # noqa: E402
     gcm_nonce_reuse,
     hash_crack,
     lcg_predict,
+    lattice_svp,
     lsb_oracle,
     mersenne_twister,
     padding_oracle,
@@ -59,6 +60,7 @@ CHALLENGES = {
     "padding_oracle": padding_oracle,
     "ecb_byte_at_a_time": ecb_byte_at_a_time,
     "lsb_oracle": lsb_oracle,
+    "lattice_svp": lattice_svp,
 }
 
 

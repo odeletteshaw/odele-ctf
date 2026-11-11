@@ -29,7 +29,8 @@ Useful techniques:
   close together, factor it (trial division or Fermat), then d = e^-1 mod phi(n).
 - pycryptodome (Crypto.*), sympy, and hashlib are available in the sandbox. Reach for
   library routines rather than writing slow searches: sympy.discrete_log (fast when the
-  group order is smooth), sympy.factorint, sympy.ntheory.residue_ntheory, etc.
+  group order is smooth), sympy.factorint, sympy.ntheory.residue_ntheory, etc. For lattice
+  problems, fpylll is available (fpylll.IntegerMatrix + fpylll.LLL.reduction).
 
 The sandbox kills any run after ~15 seconds of CPU, so never brute-force a large space
 by hand — pick the algorithm or library that makes the problem small first.
