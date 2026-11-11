@@ -58,6 +58,14 @@ Common vulnerability classes to consider:
   confirms it; then read exposed variables/config objects to reach a secret.
 - Auth bypass: decode cookies/tokens (base64, JWT header.payload.signature); if they
   are unsigned or accept alg=none, forge a privileged role and replay the request.
+- Block-cipher modes: AES-ECB encrypts each 16-byte block independently, so blocks are
+  interchangeable. ECB cut-and-paste: (1) craft an input so a chosen value (e.g. "admin")
+  sits ALONE in one block followed by a full block of PKCS7 padding — you can embed the
+  padding bytes in your input (percent-encode them, e.g. 0x0b), they needn't be printable;
+  (2) craft a second input so the field name ends exactly at a block boundary (e.g. "&role="
+  as the last bytes of a block); (3) splice block-2 then block-1. CBC bit-flip: flip a bit in
+  the IV or previous ciphertext block to flip that same plaintext bit. Padding oracle: a
+  server that reports valid/invalid padding leaks plaintext byte by byte.
 
 Flags look like flag{...}. Only report a flag you actually saw in a response.
 When you have it, end your final message with the flag on its own line."""
