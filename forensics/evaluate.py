@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.evaluate import benchmark  # noqa: E402
 from forensics.agent import solve_forensics, solve_forensics_workspace  # noqa: E402
-from forensics.challenges import gzip_nested, large_blob, magic_bytes, pcap_stream, trailing_data, wav_lsb, zip_nested  # noqa: E402
+from forensics.challenges import gzip_nested, large_blob, magic_bytes, pcap_stream, polyglot, trailing_data, wav_lsb, zip_nested  # noqa: E402
 from forensics.workspace import Workspace  # noqa: E402
 
 CHALLENGES = {
@@ -22,6 +22,7 @@ CHALLENGES = {
     "large_blob": large_blob,
     "magic_bytes": magic_bytes,
     "gzip_nested": gzip_nested,
+    "polyglot": polyglot,
 }
 
 
