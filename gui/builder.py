@@ -42,7 +42,10 @@ def _benchmark(category: str, name: str) -> Built:
 
         return flag, tools, agent.SYSTEM_PROMPT, user, cleanup
     if category in ("crypto", "misc", "forensics"):  # text-in, run_python-only categories
-        return flag, [python_tool()], agent.SYSTEM_PROMPT, challenge.make(flag), lambda: None
+        result = challenge.make(flag)
+        if category == "forensics" and hasattr(result, "dir"):  # workspace-based large artifact
+            return flag, [python_tool(result.dir)], agent.WORKSPACE_SYSTEM_PROMPT, challenge.DESCRIPTION, result.cleanup
+        return flag, [python_tool()], agent.SYSTEM_PROMPT, result, lambda: None
     if category == "ai":  # live guarded chatbot reached via send_message
         defender = challenge.make(flag)
         tools = agent.redteam_tools(defender)

@@ -22,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from uuid import uuid4
 
 DEFAULT_TIMEOUT = 20
 MAX_OUTPUT_CHARS = 20_000
@@ -51,9 +52,14 @@ def _wrap_no_network(command: list[str]) -> list[str]:
     return command
 
 
-def run_python(code: str, timeout: int = DEFAULT_TIMEOUT) -> str:
-    workdir = Path(tempfile.mkdtemp(prefix="ctf-sbx-"))
-    script = workdir / "snippet.py"
+def run_python(code: str, timeout: int = DEFAULT_TIMEOUT, workdir: Path | None = None) -> str:
+    """Run `code` in the sandbox. By default each call gets a fresh ephemeral temp dir;
+    pass a `workdir` to run inside a persistent directory instead, so the code can read
+    files a challenge placed there and keep state across calls (for large artifacts)."""
+    fresh = workdir is None
+    if fresh:
+        workdir = Path(tempfile.mkdtemp(prefix="ctf-sbx-"))
+    script = workdir / f"snippet_{uuid4().hex[:8]}.py"
     script.write_text(code)
     command = _wrap_no_network([sys.executable, "-I", str(script)])
     env = {
@@ -78,7 +84,9 @@ def run_python(code: str, timeout: int = DEFAULT_TIMEOUT) -> str:
     except Exception as error:  # sandbox wrapper missing/unusable, etc.
         return f"[could not run: {error}]"
     finally:
-        shutil.rmtree(workdir, ignore_errors=True)
+        script.unlink(missing_ok=True)
+        if fresh:
+            shutil.rmtree(workdir, ignore_errors=True)
 
     out = proc.stdout
     if proc.stderr:

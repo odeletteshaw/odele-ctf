@@ -99,8 +99,8 @@ helper（`challenges/_common.py`）、评测框架（`core/`）。
   代码、不输出任何推理文字」的退化循环,把回合数耗光。**内嵌附件要尽量小**(forensics `wav_lsb`
   从 2000 样本/5.3KB 降到 ~400/1.1KB 缓解了机械负担)。(2026-11-11 起 `wav_lsb` 和 `ecb_paste`
   已能被 DeepSeek 解出——前者是模型变强了,后者靠 web prompt 补了分组密码攻击指导;能力边界现只剩
-  `ai/firm`、`ai/both_filters`。)真要塞大件,得另给「可持久化工作区的 run_python」或「把文件
-  作为附件交给 agent」的机制(见 forensics/TODO)。
+  `ai/firm`、`ai/both_filters`。)真要塞大件,现已有「可持久化工作区」机制(`run_python(workdir=...)`
+  + `forensics/workspace.py`,见 `large_blob`),不再需要把大附件 base64 塞进 prompt。
 - 本 harness 会缓冲后台/管道命令的 stdout；要看实时进度，让脚本把结果写进文件再读那个文件。
 
 ## 密钥
@@ -117,8 +117,9 @@ helper（`challenges/_common.py`）、评测框架（`core/`）。
   oracle 分组密码攻击指导后攻破)。
 - **crypto**:14 道题,DeepSeek 全解。
 - **misc**:3 道题(brainfuck、compression_layers、xor_sequence),DeepSeek 全解。
-- **forensics**:4 道题(文件嵌成 base64,run_python 解析),DeepSeek 全解(含 `wav_lsb`——音频
-  LSB 隐写,模型已能多步解析 WAV 采样并提取低位)。
+- **forensics**:5 道题,DeepSeek 全解。小附件 base64 嵌题面;大附件走**可持久化工作区**
+  (`forensics/workspace.py` 的 `Workspace` + `run_python(workdir=...)`),文件落盘、agent 直接
+  `open()` 读、跨调用不重贴。含 `large_blob`(~1MB 文件,flag 在 marker 后)、`wav_lsb`(音频 LSB)。
 - **pwn**:3 道题,DeepSeek 全解(各 2 次调用)。工具 = `send_input`(发 payload)+ run_python。
   **模拟**有漏洞的进程(虚拟栈/内存、玩具 printf),不碰真实二进制/shell:overflow_auth(溢出相邻
   变量)、ret2win(覆盖返回地址)、format_leak(格式化字符串泄露栈上 flag)。

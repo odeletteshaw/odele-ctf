@@ -32,10 +32,30 @@ has what you need (struct, zlib, zipfile, wave, gzip, tarfile).
 
 Flags look like flag{...}. Print the flag and end your final message with it on its own line."""
 
+WORKSPACE_SYSTEM_PROMPT = """You are solving a digital-forensics CTF challenge. The artifact
+is one or more files already present in your working directory (run_python's cwd). Use
+os.listdir('.') to see them, then open()/read() to analyze them — they persist across
+run_python calls, so read them from disk each time rather than re-pasting their contents.
+There is no network.
+
+Think like a forensic analyst: identify file types from magic bytes; a file is often longer
+than it looks, so check for data appended after the logical end; archives hide data in
+comments or nested layers; packet captures need record parsing and stream reassembly; stego
+hides bits in the low bits of samples; data may be XORed or encoded. The stdlib has what you
+need (struct, zlib, zipfile, wave, gzip, tarfile).
+
+Flags look like flag{...}. Print the flag and end your final message with it on its own line."""
+
 
 def solve_forensics(challenge_text: str, model: str | None = None,
                     max_turns: int = 30) -> SolveResult:
     return solve([python_tool()], SYSTEM_PROMPT, challenge_text, model=model, max_turns=max_turns)
+
+
+def solve_forensics_workspace(ws, description: str, model: str | None = None,
+                              max_turns: int = 30) -> SolveResult:
+    return solve([python_tool(ws.dir)], WORKSPACE_SYSTEM_PROMPT, description,
+                 model=model, max_turns=max_turns)
 
 
 def main() -> None:
