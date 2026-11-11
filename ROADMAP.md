@@ -26,7 +26,7 @@ z3(angr 在 arm64 macOS 跑不动 Mach-O,真 angr 留待 x86_64 ELF)。
 | web 密码学 | CBC 翻转 ✅ · ECB 剪贴 ✅ · padding oracle ☐ · 哈希长度扩展 ☐ | |
 | 客户端 ⚠ | XSS(反射/存储/DOM) · CSRF · CORS · 原型链污染 | ⚠ 需无头浏览器工具 |
 | 逻辑 | 竞态 · 业务逻辑 · 价格篡改 | ☐ 难做确定性 hermetic |
-| 现代 | 反序列化(pickle/Java) · 请求走私 · 缓存投毒 | ☐ |
+| 现代 | 反序列化(pickle) ✅ · 请求走私 ☐ · 缓存投毒 ☐ | |
 
 ## 2. Crypto  — 工具:run_python + pycryptodome + sympy(齐)
 

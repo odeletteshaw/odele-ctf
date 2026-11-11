@@ -24,6 +24,7 @@ from web.challenges import (  # noqa: E402
     lfi,
     mass_assignment,
     nosqli,
+    pickle_deserialize,
     sqli_login,
     ssrf,
     ssti,
@@ -48,6 +49,7 @@ CHALLENGES = {
     "jwt_weak": jwt_weak,
     "xxe": xxe,
     "nosqli": nosqli,
+    "pickle_deserialize": pickle_deserialize,
     "mass_assignment": mass_assignment,
 }
 
