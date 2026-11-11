@@ -19,7 +19,7 @@ z3(angr 在 arm64 macOS 跑不动 Mach-O,真 angr 留待 x86_64 ELF)。
 |------|------|------|
 | 注入 | SQLi ✅ · 命令注入 ✅ · NoSQLi ✅ · SSTI ✅ · XXE ✅ · LFI ✅ · LDAP ✅ · CRLF ☐ | |
 | 访问控制 | IDOR ✅ · 认证绕过 ✅ · mass assignment ✅ · 越权 ☐ | |
-| 认证/会话 | JWT alg:none ✅ · JWT 弱密钥 ✅ · JWT kid/jku ☐ · OAuth ☐ · session fixation ☐ | |
+| 认证/会话 | JWT alg:none ✅ · JWT 弱密钥 ✅ · JWT kid ✅ · OAuth ☐ · session fixation ☐ | |
 | SSRF | 基础 ✅ · 云元数据/gopher/DNS rebinding ☐ | |
 | 文件 | 路径遍历 ✅ · LFI(php://filter) ✅ · 任意上传 ☐ | |
 | API | GraphQL 内省 ✅ · 批量/限流绕过 ☐ | |
