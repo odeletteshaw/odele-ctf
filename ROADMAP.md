@@ -77,8 +77,8 @@ flag XOR 混淆编译进去。agent 用 `objdump -d -s` 反汇编、沙箱跑二
 
 | 方向 | 具体 | 状态 |
 |------|------|------|
-| 文件雕刻 | IEND 后追加 ✅ · magic bytes ☐ · polyglot ☐ | |
-| 归档 | 嵌套 zip + comment ✅ · gzip/tar 套娃 ☐ | |
+| 文件雕刻 | IEND 后追加 ✅ · magic bytes ✅ · polyglot ☐ | |
+| 归档 | 嵌套 zip + comment ✅ · gzip/tar 套娃 ✅ | |
 | 流量 | pcap + TCP 乱序重组 ✅ · 协议还原/提取文件 ☐ | |
 | 音频隐写 | WAV LSB ✅ · 频谱 ☐ | |
 | 图像隐写 ⚠ | 图像 LSB · 元数据/EXIF | ⚠ 需 Pillow |
