@@ -111,7 +111,7 @@ helper（`challenges/_common.py`）、评测框架（`core/`）。
 
 ## 当前状态
 
-已就绪(ready)的七个类型,共 **77 道题**:
+已就绪(ready)的七个类型,共 **78 道题**:
 
 - **web**:21 道题,DeepSeek 全解。SQLi / 命令注入 / SSRF / XXE / SSTI / JWT(alg:none、弱密钥、
   kid)/ 反序列化(pickle)/ 分组密码(ECB 剪切粘贴、CBC 翻转)/ 限流绕过 / session 伪造 等。
@@ -124,7 +124,7 @@ helper（`challenges/_common.py`）、评测框架（`core/`）。
 - **forensics**:10 道题,DeepSeek 全解。文件雕刻 / 归档套娃 / pcap / 隐写(WAV、图像 LSB)/ HTTP
   chunked 协议还原。小附件 base64 嵌题面;大附件走**可持久化工作区**(`forensics/workspace.py`)。
   Pillow 已装。
-- **pwn**:7 道题,DeepSeek 全解。**模拟**有漏洞的进程:溢出 / ret2win / 格式化串 / canary / 整数
+- **pwn**:8 道题,DeepSeek 全解。**模拟**有漏洞的进程:溢出 / ret2win / 格式化串 / canary / 整数
   溢出 / shellcode(玩具 CPU)/ heap UAF(玩具分配器)。工具 = `send_input` + run_python。
 - **ai**:5 关红队阶梯。naive / output_filter / input_filter 可解;firm 与 both_filters 是
   **能力边界**(LLM 打不动同款硬防御)。判结果要多跑(`--runs N`)。

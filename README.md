@@ -10,7 +10,7 @@
 
 ## 现状
 
-7 个大类共 **77 道题**，DeepSeek 几乎全解（能力边界只剩 AI 红队的 firm/both_filters，以及 crypto
+7 个大类共 **78 道题**，DeepSeek 几乎全解（能力边界只剩 AI 红队的 firm/both_filters，以及 crypto
 的 padding oracle / ECB byte-at-a-time）。
 
 | 大类 | 题数 | agent 工具 | 说明 |
@@ -19,7 +19,7 @@
 | crypto | 24 | `run_python`（+ `query_oracle`） | 古典 / RSA / 对称 / ECC / 哈希 / PRNG / 格(SVP/HNP) / oracle 攻击 |
 | misc | 5 | `run_python`（+ `send_code`） | brainfuck / 压缩层 / XOR / Morse / pyjail |
 | forensics | 10 | `run_python`（+ 持久化工作区） | 文件雕刻 / 归档套娃 / pcap / 隐写 / HTTP 协议还原 |
-| pwn | 7 | `send_input` + `run_python` | 溢出 / ret2win / 格式化串 / canary / shellcode / heap UAF |
+| pwn | 8 | `send_input` + `run_python` | 溢出 / ret2win / 格式化串 / canary / shellcode / heap UAF |
 | reverse | 5 | `disassemble` + `run_binary` + `run_python` | 反汇编 / keygen / z3 符号求解 / 字节码 VM |
 | ai | 5 | `send_message` + `run_python` | 提示注入红队打带防御的聊天机器人 |
 
