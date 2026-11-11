@@ -26,6 +26,8 @@ from web.challenges import (  # noqa: E402
     mass_assignment,
     nosqli,
     pickle_deserialize,
+    rate_limit_bypass,
+    session_fixation,
     sqli_login,
     ssrf,
     ssti,
@@ -52,6 +54,8 @@ CHALLENGES = {
     "xxe": xxe,
     "nosqli": nosqli,
     "pickle_deserialize": pickle_deserialize,
+    "rate_limit_bypass": rate_limit_bypass,
+    "session_fixation": session_fixation,
     "mass_assignment": mass_assignment,
 }
 
