@@ -10,16 +10,17 @@
 
 ## 现状
 
-7 个大类共 **62 道题**，DeepSeek 全解（除 AI 红队的两个能力边界关）。
+7 个大类共 **75 道题**，DeepSeek 几乎全解（能力边界只剩 AI 红队的 firm/both_filters，以及 crypto
+的 padding oracle / ECB byte-at-a-time）。
 
 | 大类 | 题数 | agent 工具 | 说明 |
 |------|------|-----------|------|
-| web | 18 | `http_request` + `run_python` | SQLi / 命令注入 / SSRF / XXE / SSTI / JWT / 反序列化 / 分组密码… |
-| crypto | 19 | `run_python` | 古典 / RSA / 对称 / ECC / 哈希 / PRNG |
-| misc | 4 | `run_python` | brainfuck / 压缩层 / XOR / Morse |
-| forensics | 7 | `run_python`（+ 持久化工作区） | 文件雕刻 / 归档套娃 / pcap / 隐写 / 大附件 |
-| pwn | 5 | `send_input` + `run_python` | 溢出 / ret2win / 格式化串 / canary / 整数溢出（模拟进程） |
-| reverse | 4 | `disassemble` + `run_binary` + `run_python` | 反汇编 / keygen / z3 符号求解 |
+| web | 21 | `http_request` + `run_python` | SQLi / 命令注入 / SSRF / XXE / SSTI / JWT / 反序列化 / 分组密码… |
+| crypto | 22 | `run_python`（+ `query_oracle`） | 古典 / RSA / 对称 / ECC / 哈希 / PRNG / oracle 攻击 |
+| misc | 5 | `run_python`（+ `send_code`） | brainfuck / 压缩层 / XOR / Morse / pyjail |
+| forensics | 10 | `run_python`（+ 持久化工作区） | 文件雕刻 / 归档套娃 / pcap / 隐写 / HTTP 协议还原 |
+| pwn | 7 | `send_input` + `run_python` | 溢出 / ret2win / 格式化串 / canary / shellcode / heap UAF |
+| reverse | 5 | `disassemble` + `run_binary` + `run_python` | 反汇编 / keygen / z3 符号求解 / 字节码 VM |
 | ai | 5 | `send_message` + `run_python` | 提示注入红队打带防御的聊天机器人 |
 
 ## 快速开始
@@ -62,6 +63,7 @@ core/       跨题型通用底座：config（模型配置）、agent（Tool + ru
 tools/      agent 工具（「能力」），各题型从同一个菜单组装：
             sandbox.py python_tool · http.py http_tool · process.py process_tool
             chat.py message_tool · bin.py disassemble_tool / run_binary_tool
+            oracle.py query_oracle（批量查询交互式 oracle）
 <大类>/     每个题型同构：agent.py（prompt + 工具组装）+ challenges/（一题一文件）+ evaluate.py
 gui/        监督控制台（CustomTkinter，每题一个子进程会话）
 ```
