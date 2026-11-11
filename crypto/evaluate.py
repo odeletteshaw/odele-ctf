@@ -13,6 +13,7 @@ from core.evaluate import benchmark  # noqa: E402
 from crypto.agent import solve_crypto  # noqa: E402
 from crypto.challenges import (  # noqa: E402
     aes_ctr_reuse,
+    affine,
     base_layers,
     dlp_pohlig,
     ecdsa_nonce_reuse,
@@ -24,6 +25,8 @@ from crypto.challenges import (  # noqa: E402
     rsa_fermat,
     rsa_hastad,
     rsa_wiener,
+    substitution,
+    vigenere,
     xor_repeating,
     xor_single,
 )
@@ -32,6 +35,9 @@ CHALLENGES = {
     "xor_single": xor_single,
     "xor_repeating": xor_repeating,
     "base_layers": base_layers,
+    "affine": affine,
+    "vigenere": vigenere,
+    "substitution": substitution,
     "rsa_cube": rsa_cube,
     "rsa_fermat": rsa_fermat,
     "rsa_wiener": rsa_wiener,
