@@ -65,6 +65,8 @@ def run_loop(
     max_turns: int,
     on_event: EventFn | None = None,
     guidance: GuidanceFn | None = None,
+    flag_pattern: "re.Pattern[str] | None" = None,
+    persist: bool = False,
 ) -> tuple[str, int]:
     def emit(event: dict[str, Any]) -> None:
         if on_event:
@@ -93,16 +95,20 @@ def run_loop(
             emit({"type": "agent", "text": message.content})
         if not message.tool_calls:
             messages.append(assistant)
-            if message.content and message.content.strip():
-                break  # a genuine final answer (text, no tool call)
-            # The model stopped without text or a tool call (e.g. DeepSeek returns an
-            # empty finish). Nudge it to keep going rather than treating that as done.
+            pattern = flag_pattern or FLAG_PATTERN
+            text = message.content or ""
+            has_flag = bool(text.strip()) and bool(pattern.search(text))
+            # A text conclusion ends the loop when it has the flag, or when persistence is
+            # off (so the model may legitimately answer "couldn't solve"). In persist mode,
+            # text without a flag is treated as a premature stop and nudged to continue.
+            if has_flag or (text.strip() and not persist):
+                break
             nudge = (
-                "Your previous turn produced no output. Keep going — call a tool for the "
-                "next step, or give the flag. You have not finished the challenge yet."
+                "You stopped without giving the flag. Keep going — call a tool for the "
+                "next step, or finish by printing the flag. The challenge is not solved yet."
             )
             messages.append({"role": "user", "content": nudge})
-            print(f"[nudge] empty reply", flush=True)
+            print("[nudge] keep going", flush=True)
             emit({"type": "guidance", "text": "(auto) keep going"})
             continue
         assistant["tool_calls"] = [
@@ -149,13 +155,15 @@ def solve(
     on_event: EventFn | None = None,
     guidance: GuidanceFn | None = None,
     flag_pattern: "re.Pattern[str] | None" = None,
+    persist: bool = False,
 ) -> SolveResult:
     if not config.API_KEY:
         raise RuntimeError("No API key. Set DEEPSEEK_API_KEY (or CTF_API_KEY), e.g. in .env")
     client = OpenAI(base_url=config.API_BASE, api_key=config.API_KEY)
     chat = _openai_chat_fn(client, model or config.DEFAULT_MODEL)
     final_text, tool_calls = run_loop(
-        chat, tools, system_prompt, user_prompt, max_turns, on_event=on_event, guidance=guidance
+        chat, tools, system_prompt, user_prompt, max_turns,
+        on_event=on_event, guidance=guidance, flag_pattern=flag_pattern, persist=persist,
     )
     flags = (flag_pattern or FLAG_PATTERN).findall(final_text)
     return SolveResult(flags[-1] if flags else None, final_text, tool_calls)
