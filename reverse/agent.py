@@ -34,7 +34,8 @@ SYSTEM_PROMPT = """You are solving a reverse-engineering CTF challenge: a compil
 - run_binary: run the binary in a sandbox with optional stdin and argv; read its
   stdout/stderr/exit code.
 - run_python: compute offline (no network) — decode bytes, invert a transform, or construct
-  the exact input a check demands.
+  the exact input a check demands. z3-solver is available for symbolic/constraint solving:
+  recover an input whose (possibly coupled, non-invertible-by-hand) transform matches a target.
 
 Method:
 - Disassemble first and find main(). Read what input is read, what comparison or loop gates
@@ -46,6 +47,9 @@ Method:
 - To reach the flag you may either reverse the check to produce a valid input and run_binary
   it, or recover the encoded flag + the transform from the disassembly and decode it in
   run_python. A keygen only needs ANY input that passes the check, not the original one.
+- When a check couples many input bytes through a non-trivial transform (multiplication,
+  shifts, XOR, cyclic mixing), don't brute-force or invert by hand — re-encode the transform
+  as z3 bit-vector constraints in run_python and let the solver find the input.
 
 Flags look like flag{...}. Only report a flag you actually observed — printed by the binary or
 decoded from its data. End your final message with the flag on its own line."""

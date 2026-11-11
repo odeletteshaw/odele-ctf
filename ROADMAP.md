@@ -8,8 +8,8 @@ CTF 各大类(方向)与其下的具体子方向,标注**现状**和**所需工�
 **规划主线**:web/crypto/misc/forensics/ai/pwn/reverse 七类已就绪。做法都是「给对的工具 + hermetic
 模拟漏洞」:web 用 `http_request`;crypto/misc/forensics 用 `run_python`(forensics 把文件 base64
 嵌进题面);ai 用 `send_message` 打模拟的带防御聊天机器人;pwn 用 `send_input` 打模拟的有漏洞
-进程;reverse 用 `disassemble`(objdump)+ `run_binary` 打自己编译的小 C crackme。符号执行
-(angr)装得上但暂未引入,是可选的重步。
+进程;reverse 用 `disassemble`(objdump)+ `run_binary` 打自己编译的小 C crackme,符号求解用
+z3(angr 在 arm64 macOS 跑不动 Mach-O,真 angr 留待 x86_64 ELF)。
 
 ---
 
@@ -64,9 +64,9 @@ flag XOR 混淆编译进去。agent 用 `objdump -d -s` 反汇编、沙箱跑二
 
 | 方向 | 具体 | 状态 |
 |------|------|------|
-| 静态 | 读汇编/反编译 · 理解算法 | ✅ 3 题(run_me / crackme_xor / crackme_serial) |
+| 静态 | 读汇编/反编译 · 理解算法 | ✅ 4 题(run_me / crackme_xor / crackme_serial / crackme_z3) |
 | crackme/keygen | 找通过校验的输入 | ✅(crackme_xor / crackme_serial) |
-| 符号执行 ⚠ | angr 自动求"输入→flag" | ⚠ angr 装得上,暂未引入(留给长 key/复杂约束) |
+| 符号执行 | z3 符号求解(angr 底层同款) | ✅ crackme_z3(30 字节耦合变换) |
 | 保护 | 混淆 · 加壳(UPX) · 反调试 | ☐ |
 | VM/字节码 | 自定义 VM · .pyc · Java/.NET · Go/Rust · WASM | ☐ |
 
