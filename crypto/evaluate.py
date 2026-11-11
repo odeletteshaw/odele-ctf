@@ -17,8 +17,10 @@ from crypto.challenges import (  # noqa: E402
     base_layers,
     dlp_pohlig,
     ecdsa_nonce_reuse,
+    gcm_nonce_reuse,
     hash_crack,
     lcg_predict,
+    mersenne_twister,
     rsa_common_factor,
     rsa_common_modulus,
     rsa_cube,
@@ -45,9 +47,11 @@ CHALLENGES = {
     "rsa_hastad": rsa_hastad,
     "aes_ctr_reuse": aes_ctr_reuse,
     "ecdsa_nonce_reuse": ecdsa_nonce_reuse,
+    "gcm_nonce_reuse": gcm_nonce_reuse,
     "dlp_pohlig": dlp_pohlig,
     "rsa_common_factor": rsa_common_factor,
     "lcg_predict": lcg_predict,
+    "mersenne_twister": mersenne_twister,
     "hash_crack": hash_crack,
 }
 
