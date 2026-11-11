@@ -93,7 +93,18 @@ def run_loop(
             emit({"type": "agent", "text": message.content})
         if not message.tool_calls:
             messages.append(assistant)
-            break
+            if message.content and message.content.strip():
+                break  # a genuine final answer (text, no tool call)
+            # The model stopped without text or a tool call (e.g. DeepSeek returns an
+            # empty finish). Nudge it to keep going rather than treating that as done.
+            nudge = (
+                "Your previous turn produced no output. Keep going — call a tool for the "
+                "next step, or give the flag. You have not finished the challenge yet."
+            )
+            messages.append({"role": "user", "content": nudge})
+            print(f"[nudge] empty reply", flush=True)
+            emit({"type": "guidance", "text": "(auto) keep going"})
+            continue
         assistant["tool_calls"] = [
             {
                 "id": call.id,
