@@ -54,7 +54,7 @@ z3(angr 在 arm64 macOS 跑不动 Mach-O,真 angr 留待 x86_64 ELF)。
 | 栈 | 溢出相邻变量 ✅ · ret2win ✅ · 格式化字符串泄露 ✅ · canary 绕过 ✅ · ret2libc/ROP ☐ | |
 | 堆 | UAF ✅ · double-free ☐ · tcache/fastbin ☐ · house-of-* ☐ | 玩具分配器(alias 复用) |
 | shellcode | 注入 ✅ · ret2shellcode | 模拟可执行内存 + 玩具 CPU |
-| 整数 | 整数溢出 ✅ · off-by-one ☐ | |
+| 整数 | 整数溢出 ✅ · off-by-one ✅ | |
 
 > 真·跑二进制(拿真实 shell)不在 hermetic 范围;要做得另起受控沙箱(qemu/ptrace),成本高。
 
