@@ -111,12 +111,12 @@ helper（`challenges/_common.py`）、评测框架（`core/`）。
 
 ## 当前状态
 
-已就绪(ready)的七个类型,共 **75 道题**:
+已就绪(ready)的七个类型,共 **76 道题**:
 
 - **web**:21 道题,DeepSeek 全解。SQLi / 命令注入 / SSRF / XXE / SSTI / JWT(alg:none、弱密钥、
   kid)/ 反序列化(pickle)/ 分组密码(ECB 剪切粘贴、CBC 翻转)/ 限流绕过 / session 伪造 等。
-- **crypto**:22 道题,DeepSeek 几乎全解。古典(仿射/Vigenère/替换)、RSA(立方根/Fermat/Wiener/
-  共模/Håstad/共因子/LSB oracle)、对称(CTR/GCM)、ECC、哈希/PRNG(LCG/梅森旋转)。**能力边界**:
+- **crypto**:23 道题,DeepSeek 几乎全解。古典(仿射/Vigenère/替换)、RSA(立方根/Fermat/Wiener/
+  共模/Håstad/共因子/LSB oracle)、对称(CTR/GCM)、ECC、哈希/PRNG(LCG/梅森旋转)、格(SVP/LLL)。**能力边界**:
   `padding_oracle`、`ecb_byte_at_a_time`(跨多字节 oracle 编排打不穿,脚本可解;用 `tools/oracle.py`
   批量查询)。
 - **misc**:5 道题(brainfuck、compression_layers、xor_sequence、morse、pyjail),DeepSeek 全解。

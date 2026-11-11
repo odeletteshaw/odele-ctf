@@ -10,13 +10,13 @@
 
 ## 现状
 
-7 个大类共 **75 道题**，DeepSeek 几乎全解（能力边界只剩 AI 红队的 firm/both_filters，以及 crypto
+7 个大类共 **76 道题**，DeepSeek 几乎全解（能力边界只剩 AI 红队的 firm/both_filters，以及 crypto
 的 padding oracle / ECB byte-at-a-time）。
 
 | 大类 | 题数 | agent 工具 | 说明 |
 |------|------|-----------|------|
 | web | 21 | `http_request` + `run_python` | SQLi / 命令注入 / SSRF / XXE / SSTI / JWT / 反序列化 / 分组密码… |
-| crypto | 22 | `run_python`（+ `query_oracle`） | 古典 / RSA / 对称 / ECC / 哈希 / PRNG / oracle 攻击 |
+| crypto | 23 | `run_python`（+ `query_oracle`） | 古典 / RSA / 对称 / ECC / 哈希 / PRNG / 格(SVP) / oracle 攻击 |
 | misc | 5 | `run_python`（+ `send_code`） | brainfuck / 压缩层 / XOR / Morse / pyjail |
 | forensics | 10 | `run_python`（+ 持久化工作区） | 文件雕刻 / 归档套娃 / pcap / 隐写 / HTTP 协议还原 |
 | pwn | 7 | `send_input` + `run_python` | 溢出 / ret2win / 格式化串 / canary / shellcode / heap UAF |
