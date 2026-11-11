@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.evaluate import benchmark  # noqa: E402
 from pwn.agent import solve_pwn  # noqa: E402
-from pwn.challenges import canary_bypass, format_leak, integer_overflow, overflow_auth, ret2win  # noqa: E402
+from pwn.challenges import canary_bypass, format_leak, integer_overflow, overflow_auth, ret2win, shellcode  # noqa: E402
 
 CHALLENGES = {
     "overflow_auth": overflow_auth,
@@ -19,6 +19,7 @@ CHALLENGES = {
     "format_leak": format_leak,
     "integer_overflow": integer_overflow,
     "canary_bypass": canary_bypass,
+    "shellcode": shellcode,
 }
 
 
