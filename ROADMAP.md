@@ -37,11 +37,12 @@ z3(angr 在 arm64 macOS 跑不动 Mach-O,真 angr 留待 x86_64 ELF)。
 | 对称 | CTR 复用 ✅ · CBC/padding oracle ⚠(能力边界) · ECB byte-at-a-time ⚠(能力边界) · GCM nonce 复用 ✅ | |
 | 离散对数/ECC | Pohlig-Hellman ✅ · ECDSA nonce 复用 ✅ · 小子群/无效曲线 ☐ · 偏置 nonce(HNP) ⚠ | |
 | 哈希/PRNG | 弱哈希爆破 ✅ · LCG 预测 ✅ · 梅森旋转预测 ✅ · 长度扩展 ☐ · MD5 碰撞 ☐ | |
-| 格 | SVP/LLL ✅(lattice_svp) · LWE ☐ · NTRU ☐ · HNP+LLL ☐ · Coppersmith ☐ | fpylll 已装(3.14 有 wheel) |
+| 格 | SVP/LLL ✅(lattice_svp) · HNP+LLL ✅(hnp) · LWE ☐ · NTRU ☐ · Coppersmith ☐ | fpylll 已装(3.14 有 wheel) |
 
-> 注:需交互式 oracle 的攻击(padding oracle、RSA LSB oracle、ECB byte-at-a-time)不适合
-> 当前"模型逐轮发请求 + 沙箱禁网"的结构——agent 没法在一次 run_python 里循环查询我们的 oracle。
-> 要做得加一个"可被 agent 反复查询的本地 oracle 工具"。
+> 注:交互式 oracle 已实现(`tools/oracle.py`,批量查询,一次发最多 300 个)。LSB oracle 一次批查询
+> 即可解;padding oracle、ECB byte-at-a-time 仍是能力边界——批量工具能省轮次,但模型跨多字节的
+> 顺序状态编排(每字节依赖上一字节的中间值)仍打不穿。要彻底解决,得把 oracle 做成沙箱内可直接调用的
+> 函数(让模型在 run_python 里写循环),而不是逐轮 tool call。
 
 ## 3. Pwn / 二进制利用  — 工具:send_input + run_python(齐)
 

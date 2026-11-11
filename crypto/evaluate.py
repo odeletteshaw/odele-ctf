@@ -20,6 +20,7 @@ from crypto.challenges import (  # noqa: E402
     ecdsa_nonce_reuse,
     gcm_nonce_reuse,
     hash_crack,
+    hnp,
     lcg_predict,
     lattice_svp,
     lsb_oracle,
@@ -61,6 +62,7 @@ CHALLENGES = {
     "ecb_byte_at_a_time": ecb_byte_at_a_time,
     "lsb_oracle": lsb_oracle,
     "lattice_svp": lattice_svp,
+    "hnp": hnp,
 }
 
 
