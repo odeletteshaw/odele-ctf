@@ -89,7 +89,7 @@ flag XOR 混淆编译进去。agent 用 `objdump -d -s` 反汇编、沙箱跑二
 
 | 方向 | 具体 | 状态 |
 |------|------|------|
-| 编码/esoteric | 多层压缩 ✅ · brainfuck ✅ · 编码谜题 ☐ · QR/条码 ☐ | |
+| 编码/esoteric | 多层压缩 ✅ · brainfuck ✅ · 编码谜题(morse) ✅ · QR/条码 ☐ | |
 | 编程题 | keystream XOR ✅ · 限时算法 ☐ · 多轮交互脚本 ☐ | |
 | jail 逃逸 ⚠ | pyjail · 受限 bash · 沙箱逃逸 | ⚠ 需交互式进程工具 |
 | 逻辑/游戏 | 谜题 · 博弈 | ☐ |

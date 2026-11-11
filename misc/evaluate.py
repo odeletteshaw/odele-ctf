@@ -11,12 +11,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.evaluate import benchmark  # noqa: E402
 from misc.agent import solve_misc  # noqa: E402
-from misc.challenges import brainfuck, compression_layers, xor_sequence  # noqa: E402
+from misc.challenges import brainfuck, compression_layers, morse, xor_sequence  # noqa: E402
 
 CHALLENGES = {
     "brainfuck": brainfuck,
     "compression_layers": compression_layers,
     "xor_sequence": xor_sequence,
+    "morse": morse,
 }
 
 
