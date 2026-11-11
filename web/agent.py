@@ -36,6 +36,9 @@ Method:
 - Read every response as an oracle. Error messages, status codes, reflected input,
   resolved paths, and header/cookie changes tell you what the server did. Let each
   response narrow the next request. Never repeat an identical request.
+- Don't conclude or give up until you actually have the flag. When a technique stalls,
+  switch to a genuinely different attack class instead of retrying near-variations of the
+  same failed one — there is usually more than one way in, so keep forming new hypotheses.
 
 Common vulnerability classes to consider:
 - SQL injection: ' or " to provoke errors; ' OR '1'='1, comment with -- or #; note
