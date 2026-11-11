@@ -67,6 +67,56 @@ def http_tool(target: str, client: httpx.Client) -> Tool:
     )
 
 
+MAX_BATCH = 60
+SNIPPET = 160
+
+
+def http_batch_tool(target: str, client: httpx.Client) -> Tool:
+    """A fuzzing-friendly batch variant of http_request: send many requests in one call and
+    get one compact line per request (status + path + a short body snippet)."""
+
+    def handler(args: dict[str, Any]) -> str:
+        reqs = args.get("requests", [])
+        if len(reqs) > MAX_BATCH:
+            return f"Error: too many requests ({len(reqs)} > {MAX_BATCH}); split the batch."
+        lines: list[str] = []
+        for idx, req in enumerate(reqs):
+            method = str(req.get("method", "GET")).upper()
+            path = str(req.get("path", "/"))
+            try:
+                url = build_url(target, path)
+                response = client.request(
+                    method, url, headers=req.get("headers"), content=req.get("body")
+                )
+                snippet = " ".join(response.text.split())[:SNIPPET]
+                lines.append(f"{idx}: {response.status_code} {method} {path} | {snippet}")
+            except (OutOfScope, httpx.HTTPError, httpx.InvalidURL) as error:
+                lines.append(f"{idx}: ERR {method} {path} {error}")
+        return "\n".join(lines)
+
+    return Tool(
+        name="http_batch",
+        description=(
+            "Send up to 60 HTTP requests to the target in ONE call and get one compact line "
+            "per request (index, status, path, and a short body snippet). Use it to fuzz or "
+            "brute-force many candidate paths/params at once; then follow up on the hits with "
+            "http_request for the full response."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "requests": {
+                    "type": "array",
+                    "items": HTTP_PARAMETERS,
+                    "description": "List of requests to send.",
+                }
+            },
+            "required": ["requests"],
+        },
+        handler=handler,
+    )
+
+
 def new_http_client() -> httpx.Client:
     # Redirects are not followed, so a response cannot move a request off the target.
     return httpx.Client(
