@@ -91,7 +91,7 @@ flag XOR 混淆编译进去。agent 用 `objdump -d -s` 反汇编、沙箱跑二
 |------|------|------|
 | 编码/esoteric | 多层压缩 ✅ · brainfuck ✅ · 编码谜题(morse) ✅ · QR/条码 ☐ | |
 | 编程题 | keystream XOR ✅ · 限时算法 ☐ · 多轮交互脚本 ☐ | |
-| jail 逃逸 ⚠ | pyjail · 受限 bash · 沙箱逃逸 | ⚠ 需交互式进程工具 |
+| jail 逃逸 | pyjail ✅ · 受限 bash ☐ · 沙箱逃逸 ☐ | send_code 交互工具 |
 | 逻辑/游戏 | 谜题 · 博弈 | ☐ |
 
 ## 7. AI / 提示安全  — 工具:send_message + run_python(齐)
