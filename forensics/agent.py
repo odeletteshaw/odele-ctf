@@ -28,7 +28,8 @@ Think like a forensic analyst: identify the file type from its magic bytes; a fi
 longer than it looks, so check for data appended after the logical end; archives can hide
 data in comments or nested layers; packet captures (pcap) need their records parsed and
 streams reassembled; stego hides bits in the low bits of image/audio samples. The stdlib
-has what you need (struct, zlib, zipfile, wave, gzip, tarfile).
+has what you need (struct, zlib, zipfile, wave, gzip, tarfile), plus Pillow (PIL.Image) for
+images.
 
 Flags look like flag{...}. Print the flag and end your final message with it on its own line."""
 
@@ -42,7 +43,7 @@ Think like a forensic analyst: identify file types from magic bytes; a file is o
 than it looks, so check for data appended after the logical end; archives hide data in
 comments or nested layers; packet captures need record parsing and stream reassembly; stego
 hides bits in the low bits of samples; data may be XORed or encoded. The stdlib has what you
-need (struct, zlib, zipfile, wave, gzip, tarfile).
+need (struct, zlib, zipfile, wave, gzip, tarfile), plus Pillow (PIL.Image) for images.
 
 Flags look like flag{...}. Print the flag and end your final message with it on its own line."""
 

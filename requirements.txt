@@ -3,3 +3,4 @@ httpx==0.28.1
 pycryptodome==4.4.0
 sympy==1.14.0
 z3-solver==4.13.0.0
+Pillow==13.0.0
