@@ -87,6 +87,9 @@ class Session:
             self._apply(event)
             self.transcript.append(event)
             new.append(event)
+        # reap the subprocess once it has finished, so it doesn't linger as a zombie
+        if self.state["done"]:
+            self._proc.join(timeout=0)
         return new
 
     def _apply(self, event: dict[str, Any]) -> None:
