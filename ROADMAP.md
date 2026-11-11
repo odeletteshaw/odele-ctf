@@ -33,8 +33,8 @@ z3(angr 在 arm64 macOS 跑不动 Mach-O,真 angr 留待 x86_64 ELF)。
 | 方向 | 具体 | 状态 |
 |------|------|------|
 | 古典 | 单字节 XOR ✅ · 重复 XOR ✅ · 编码层 ✅ · 维吉尼亚 ✅ · 仿射 ✅ · 替换 ✅ | |
-| RSA | 立方根 ✅ · Fermat ✅ · Wiener ✅ · 共模 ✅ · Håstad ✅ · 共因子 ✅ · LSB oracle ☐ · Coppersmith ⚠ | |
-| 对称 | CTR 复用 ✅ · CBC/padding oracle ☐ · ECB byte-at-a-time ☐ · GCM nonce 复用 ✅ | |
+| RSA | 立方根 ✅ · Fermat ✅ · Wiener ✅ · 共模 ✅ · Håstad ✅ · 共因子 ✅ · LSB oracle ✅ · Coppersmith ⚠ | |
+| 对称 | CTR 复用 ✅ · CBC/padding oracle ⚠(能力边界) · ECB byte-at-a-time ⚠(能力边界) · GCM nonce 复用 ✅ | |
 | 离散对数/ECC | Pohlig-Hellman ✅ · ECDSA nonce 复用 ✅ · 小子群/无效曲线 ☐ · 偏置 nonce(HNP) ⚠ | |
 | 哈希/PRNG | 弱哈希爆破 ✅ · LCG 预测 ✅ · 梅森旋转预测 ✅ · 长度扩展 ☐ · MD5 碰撞 ☐ | |
 | 格 ⚠ | LWE · NTRU · HNP+LLL · Coppersmith | ⚠ 需 fpylll(Python 3.14 暂难装) |

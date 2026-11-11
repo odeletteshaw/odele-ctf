@@ -10,17 +10,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.evaluate import benchmark  # noqa: E402
-from crypto.agent import solve_crypto  # noqa: E402
+from crypto.agent import solve_crypto, solve_crypto_oracle  # noqa: E402
 from crypto.challenges import (  # noqa: E402
     aes_ctr_reuse,
     affine,
     base_layers,
     dlp_pohlig,
+    ecb_byte_at_a_time,
     ecdsa_nonce_reuse,
     gcm_nonce_reuse,
     hash_crack,
     lcg_predict,
+    lsb_oracle,
     mersenne_twister,
+    padding_oracle,
     rsa_common_factor,
     rsa_common_modulus,
     rsa_cube,
@@ -53,6 +56,9 @@ CHALLENGES = {
     "lcg_predict": lcg_predict,
     "mersenne_twister": mersenne_twister,
     "hash_crack": hash_crack,
+    "padding_oracle": padding_oracle,
+    "ecb_byte_at_a_time": ecb_byte_at_a_time,
+    "lsb_oracle": lsb_oracle,
 }
 
 
@@ -60,8 +66,11 @@ def _make(module, flag):
     return module.make(flag)
 
 
-def _solve(text, _description):
-    return solve_crypto(text)
+def _solve(target, _description):
+    if isinstance(target, tuple):  # oracle challenge: (oracle, text)
+        oracle, text = target
+        return solve_crypto_oracle(oracle, text)
+    return solve_crypto(target)
 
 
 if __name__ == "__main__":
