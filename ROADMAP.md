@@ -68,7 +68,7 @@ flag XOR 混淆编译进去。agent 用 `objdump -d -s` 反汇编、沙箱跑二
 | crackme/keygen | 找通过校验的输入 | ✅(crackme_xor / crackme_serial) |
 | 符号执行 | z3 符号求解(angr 底层同款) | ✅ crackme_z3(30 字节耦合变换) |
 | 保护 | 混淆 · 加壳(UPX) · 反调试 | ☐ |
-| VM/字节码 | 自定义 VM · .pyc · Java/.NET · Go/Rust · WASM | ☐ |
+| VM/字节码 | 自定义 VM ✅ · .pyc · Java/.NET · Go/Rust · WASM | ☐ |
 
 ## 5. Forensics / 取证  — 工具:run_python(齐)
 

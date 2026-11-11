@@ -11,13 +11,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.evaluate import benchmark  # noqa: E402
 from reverse.agent import solve_reverse  # noqa: E402
-from reverse.challenges import crackme_serial, crackme_xor, crackme_z3, run_me  # noqa: E402
+from reverse.challenges import crackme_serial, crackme_xor, crackme_z3, custom_vm, run_me  # noqa: E402
 
 CHALLENGES = {
     "run_me": run_me,
     "crackme_xor": crackme_xor,
     "crackme_serial": crackme_serial,
     "crackme_z3": crackme_z3,
+    "custom_vm": custom_vm,
 }
 
 
