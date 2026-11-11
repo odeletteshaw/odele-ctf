@@ -1,15 +1,17 @@
 """CustomTkinter supervision console (view). Chat-app layout over a Manager:
 
-- left rail: one button per session (a solve in its own subprocess), with a live spinner
-  while running; click to switch the center conversation;
+- left rail: folders and, under them, one button per session (a solve in its own
+  subprocess), with a live spinner while running; click to switch the center conversation;
 - center: the active session as real chat bubbles — agent, tool blocks, your guidance;
-- right: a rich state panel (animated status, timer, tool/path findings, flag);
+- right: a rich state panel (animated status, timer, tool/path findings, flag) with a stop
+  button, a rename action, and copy buttons;
 - bottom: guidance input for the active session.
 
 Only rendering lives here; all agent logic is in the Session subprocess.
 """
 
 import random
+import tkinter.simpledialog as simpledialog
 from urllib.parse import urlparse
 
 import customtkinter as ctk
@@ -38,11 +40,12 @@ TOOL_BG = "#171c27"
 RESULT_BG = "#14181f"
 TOOL_FG = "#c3a0ff"
 RAIL_SEL = "#243043"
+FOLDER_FG = "#9aa5b5"
 STATUS_COLORS = {
     "running": "#ffd166", "solved": "#79d98a", "failed": "#ff6b6b",
-    "error": "#ff6b6b", "idle": "#8b94a7",
+    "error": "#ff6b6b", "idle": "#8b94a7", "cancelled": "#c98a3d",
 }
-STATUS_GLYPH = {"solved": "✓", "failed": "✗", "error": "⚠", "idle": "○"}
+STATUS_GLYPH = {"solved": "✓", "failed": "✗", "error": "⚠", "idle": "○", "cancelled": "■"}
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 MAX_OUT = 1400
 WRAP = 560
@@ -64,6 +67,8 @@ class ConsoleApp:
         self.bold = ctk.CTkFont(family="Menlo", size=15, weight="bold")
 
         self._build()
+        self.root.bind("<Command-c>", self._copy_flag)
+        self.root.bind("<Control-c>", self._copy_flag)
         self.root.after(poll_ms, self._poll)
         self.root.after(90, self._animate)
 
@@ -76,14 +81,18 @@ class ConsoleApp:
         self._build_right()
 
     def _build_rail(self) -> None:
-        rail = ctk.CTkFrame(self.root, width=220, corner_radius=0)
+        rail = ctk.CTkFrame(self.root, width=230, corner_radius=0)
         rail.grid(row=0, column=0, sticky="ns")
         rail.grid_propagate(False)
         ctk.CTkLabel(rail, text="SESSIONS", text_color=MUTED,
                      font=ctk.CTkFont(family="Menlo", size=11, weight="bold")).pack(
             anchor="w", padx=16, pady=(16, 4))
-        ctk.CTkButton(rail, text="＋  New session", command=self._show_setup,
-                      height=34, anchor="w").pack(fill="x", padx=12, pady=(0, 8))
+        row = ctk.CTkFrame(rail, fg_color="transparent")
+        row.pack(fill="x", padx=10, pady=(0, 8))
+        ctk.CTkButton(row, text="＋ Session", command=self._show_setup,
+                      height=32, anchor="w").pack(side="left", fill="x", expand=True, padx=(0, 4))
+        ctk.CTkButton(row, text="🗂", width=40, height=32, command=self._new_folder,
+                      fg_color="#2a3648", hover_color="#35445a").pack(side="left")
         self.rail_list = ctk.CTkScrollableFrame(rail, fg_color="transparent")
         self.rail_list.pack(fill="both", expand=True, padx=4)
 
@@ -131,7 +140,7 @@ class ConsoleApp:
             label = cat if ready else f"{cat} (soon)"
             box = ctk.CTkCheckBox(drow, text=label, command=self._refresh_chal_options, width=108)
             if not ready:
-                box.configure(state="disabled")  # planned categories can't be launched yet
+                box.configure(state="disabled")
             box.pack(side="left", padx=6, pady=3)
             self.dir_boxes[cat] = box
         self.dir_boxes["web"].select()
@@ -162,6 +171,18 @@ class ConsoleApp:
         self.flag_entry.pack(anchor="w", pady=4)
         self.bench_panel.pack(anchor="w")
 
+        # --- name + folder (new) ------------------------------------------
+        opt_row = ctk.CTkFrame(card, fg_color="transparent")
+        opt_row.pack(anchor="w", padx=26, pady=(14, 0))
+        ctk.CTkLabel(opt_row, text="name", text_color=MUTED, font=hf).pack(anchor="w")
+        self.name_entry = ctk.CTkEntry(opt_row, placeholder_text="(auto from target)",
+                                       width=260, font=self.mono)
+        self.name_entry.pack(anchor="w", pady=(4, 6))
+        ctk.CTkLabel(opt_row, text="folder", text_color=MUTED, font=hf).pack(anchor="w")
+        self.folder_menu = ctk.CTkOptionMenu(opt_row, values=["(none)"], width=260,
+                                             command=lambda _v: None)
+        self.folder_menu.pack(anchor="w", pady=(4, 0))
+
         self.setup_hint = ctk.CTkLabel(card, text="", text_color="#ff6b6b", font=self.mono_s)
         self.setup_hint.pack(anchor="w", padx=26, pady=(10, 0))
         ctk.CTkButton(card, text="Start  ▶", command=self._start_from_setup,
@@ -184,6 +205,11 @@ class ConsoleApp:
         if self.chal_menu.get() not in options:
             self.chal_menu.set(options[0])
 
+    def _refresh_folder_options(self) -> None:
+        self.folder_menu.configure(values=["(none)"] + self.manager.folders)
+        if self.folder_menu.get() not in ["(none)"] + self.manager.folders:
+            self.folder_menu.set("(none)")
+
     def _show_setup(self) -> None:
         self.manager.active = None
         for btn in self._rows.values():
@@ -193,6 +219,7 @@ class ConsoleApp:
         self.bottom.grid_remove()
         self.setup.grid()
         self._refresh_chal_options()
+        self._refresh_folder_options()
 
     def _start_from_setup(self) -> None:
         if self.mode_btn.get() == "Custom URL":
@@ -216,44 +243,105 @@ class ConsoleApp:
                 category, name = choice.split("/", 1)
             spec = {"kind": "benchmark", "category": category, "name": name}
             title = name
+        custom_name = self.name_entry.get().strip()
+        if custom_name:
+            title = custom_name
+        folder = self.folder_menu.get()
+        folder = None if folder == "(none)" else folder
         self.setup_hint.configure(text="")
         self.setup.grid_remove()
-        self.add_session(self.manager.new_session(spec, title, category))
+        self.add_session(self.manager.new_session(spec, title, category, folder=folder))
 
     def _build_right(self) -> None:
         panel = ctk.CTkFrame(self.root, width=290, corner_radius=0)
         panel.grid(row=0, column=2, sticky="ns")
         panel.grid_propagate(False)
         pad = {"anchor": "w", "padx": 16}
-        self.big_status = ctk.CTkLabel(panel, text="○ idle", font=self.bold, text_color=MUTED)
-        self.big_status.pack(**pad, pady=(18, 0))
+
+        top = ctk.CTkFrame(panel, fg_color="transparent")
+        top.pack(fill="x", padx=16, pady=(14, 0))
+        self.big_status = ctk.CTkLabel(top, text="○ idle", font=self.bold, text_color=MUTED)
+        self.big_status.pack(side="left", anchor="w")
+        self.btn_stop = ctk.CTkButton(top, text="■ Stop", width=72, height=30,
+                                      fg_color="#5a2b2b", hover_color="#703636",
+                                      command=self._stop_active)
+        self.btn_stop.pack(side="right")
         self.lbl_timer = ctk.CTkLabel(panel, text="⏱ 0s", text_color=MUTED, font=self.mono)
-        self.lbl_timer.pack(**pad, pady=(2, 14))
+        self.lbl_timer.pack(**pad, pady=(2, 6))
+        self.btn_rename = ctk.CTkButton(panel, text="✎ Rename session", width=150, height=28,
+                                        command=self._rename_active, anchor="w")
+        self.btn_rename.pack(anchor="w", padx=16, pady=(0, 8))
         self.lbl_counts = ctk.CTkLabel(panel, text="replies 0 · tool calls 0", font=self.mono)
         self.lbl_counts.pack(**pad)
         self.lbl_tools = ctk.CTkLabel(panel, text="", text_color=MUTED, font=self.mono_s,
                                       justify="left", wraplength=250)
         self.lbl_tools.pack(**pad, pady=(2, 14))
-        ctk.CTkLabel(panel, text="FINDINGS", text_color=MUTED,
-                     font=ctk.CTkFont(family="Menlo", size=11, weight="bold")).pack(**pad)
+
+        self._header(panel, "FINDINGS", lambda: self._copy(self._findings_text()))
         self.txt_findings = ctk.CTkTextbox(panel, height=110, font=self.mono_s, wrap="word")
         self.txt_findings.pack(fill="x", padx=16, pady=(4, 14))
-        ctk.CTkLabel(panel, text="CURRENT THINKING", text_color=MUTED,
-                     font=ctk.CTkFont(family="Menlo", size=11, weight="bold")).pack(**pad)
+
+        self._header(panel, "CURRENT THINKING", lambda: self._copy(self._thinking_text()))
         self.txt_think = ctk.CTkTextbox(panel, height=180, font=self.mono_s, wrap="word")
         self.txt_think.pack(fill="both", expand=True, padx=16, pady=(4, 14))
-        ctk.CTkLabel(panel, text="FLAG", text_color=MUTED,
-                     font=ctk.CTkFont(family="Menlo", size=11, weight="bold")).pack(**pad)
-        self.lbl_flag = ctk.CTkLabel(panel, text="—", text_color="#79d98a", font=self.bold)
-        self.lbl_flag.pack(**pad, pady=(4, 16))
 
-    # --- sessions ----------------------------------------------------------
-    def add_session(self, session: Session) -> None:
+        flag_row = ctk.CTkFrame(panel, fg_color="transparent")
+        flag_row.pack(fill="x", padx=16, pady=(4, 16))
+        ctk.CTkLabel(flag_row, text="FLAG", text_color=MUTED,
+                     font=ctk.CTkFont(family="Menlo", size=11, weight="bold")).pack(side="left")
+        self.lbl_flag = ctk.CTkLabel(flag_row, text="—", text_color="#79d98a", font=self.bold,
+                                     anchor="w", justify="left", wraplength=200)
+        self.lbl_flag.pack(side="left", padx=(8, 0), expand=True, fill="x")
+        self._copy_btn(flag_row, lambda: self._copy(self._flag_now()))
+
+    def _flag_now(self) -> str:
+        a = self.manager.active
+        return (a.state.get("flag") or "") if a else ""
+
+    def _header(self, parent: ctk.CTkFrame, text: str, copy_cmd) -> None:
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.pack(fill="x", padx=16)
+        ctk.CTkLabel(row, text=text, text_color=MUTED,
+                     font=ctk.CTkFont(family="Menlo", size=11, weight="bold")).pack(side="left")
+        self._copy_btn(row, copy_cmd)
+
+    def _copy_btn(self, parent: ctk.CTkFrame, cmd) -> None:
+        ctk.CTkButton(parent, text="⧉", width=28, height=24, fg_color="#232b3a",
+                      hover_color="#35445a", font=self.mono_s, command=cmd).pack(side="right")
+
+    # --- sessions / folders ------------------------------------------------
+    def _new_folder(self) -> None:
+        name = simpledialog.askstring("New folder", "Folder name:", parent=self.root)
+        if name and self.manager.new_folder(name):
+            self._render_rail()
+
+    def _render_rail(self) -> None:
+        for child in self.rail_list.winfo_children():
+            child.destroy()
+        self._rows.clear()
+        for folder in self.manager.folders:
+            self._folder_label(folder)
+            for s in self.manager.sessions:
+                if s.folder == folder:
+                    self._session_button(s, indent=True)
+        for s in self.manager.sessions:
+            if s.folder is None:
+                self._session_button(s, indent=False)
+
+    def _folder_label(self, folder: str) -> None:
+        lbl = ctk.CTkLabel(self.rail_list, text=f"▾  {folder}", text_color=FOLDER_FG,
+                           anchor="w", font=ctk.CTkFont(family="Menlo", size=11, weight="bold"))
+        lbl.pack(fill="x", padx=16, pady=(10, 2))
+
+    def _session_button(self, session: Session, indent: bool) -> None:
         btn = ctk.CTkButton(self.rail_list, text=f"○  {session.title}", anchor="w",
-                            fg_color="transparent", hover_color=RAIL_SEL, height=40,
+                            fg_color="transparent", hover_color=RAIL_SEL, height=36,
                             command=lambda s=session: self.select(s))
-        btn.pack(fill="x", pady=2)
+        btn.pack(fill="x", pady=2, padx=(24 if indent else 8, 4))
         self._rows[session.id] = btn
+
+    def add_session(self, session: Session) -> None:
+        self._render_rail()
         self._rendered.setdefault(session.id, 0)
         self.select(session)
 
@@ -309,7 +397,7 @@ class ConsoleApp:
             self._bubble("e", GUIDE_BG, f"you ▸ {ev['text']}", text_color=GUIDE_FG)
         elif kind == "status":
             status = ev.get("status", "")
-            if status in ("solved", "failed", "error"):
+            if status in ("solved", "failed", "error", "cancelled"):
                 extra = ev.get("flag") or ev.get("error") or ""
                 self._bubble("center", "#11151c", f"— {status.upper()} {extra} —".strip(),
                              text_color=STATUS_COLORS.get(status, FG), font=self.mono, full=True)
@@ -321,6 +409,40 @@ class ConsoleApp:
             self.manager.active.send_guidance(text)
             self._bubble("e", GUIDE_BG, f"you ▸ {text}  (queued)", text_color=GUIDE_FG)
             self.entry.delete(0, "end")
+
+    def _stop_active(self) -> None:
+        if self.manager.active and self.manager.active.is_running():
+            self.manager.stop(self.manager.active)
+            self._bubble("center", "#11151c", "— CANCELLED —", text_color=STATUS_COLORS["cancelled"],
+                         font=self.mono, full=True)
+            self._refresh_panel()
+
+    def _rename_active(self) -> None:
+        if not self.manager.active:
+            return
+        name = simpledialog.askstring("Rename session", "Session name:",
+                                      initialvalue=self.manager.active.title, parent=self.root)
+        if name:
+            self.manager.rename(self.manager.active, name)
+            self.center_head.configure(text=f"{self.manager.active.title}  ·  {self.manager.active.category}")
+            self._render_rail()
+
+    def _copy(self, text: str) -> None:
+        self.root.clipboard_clear()
+        self.root.clipboard_append(text)
+
+    def _copy_flag(self, _event=None) -> None:
+        w = self.root.focus_get()
+        if isinstance(w, (ctk.CTkTextbox, ctk.CTkEntry)):
+            return  # textbox/entry handles its own copy
+        if self.manager.active and self.manager.active.state.get("flag"):
+            self._copy(self.manager.active.state["flag"])
+
+    def _findings_text(self) -> str:
+        return self.txt_findings.get("1.0", "end").strip()
+
+    def _thinking_text(self) -> str:
+        return self.txt_think.get("1.0", "end").strip()
 
     def _set_text(self, box: ctk.CTkTextbox, text: str) -> None:
         box.delete("1.0", "end")
@@ -350,7 +472,10 @@ class ConsoleApp:
         self.lbl_tools.configure(text="   ".join(f"{k}×{v}" for k, v in st["tools_used"].items()))
         self._set_text(self.txt_findings, "\n".join(st["paths"]) or "—")
         self._set_text(self.txt_think, st["thinking"] or "—")
+        # keep the full flag text (braces + prefix) untouched — never strip it
         self.lbl_flag.configure(text=st["flag"] or "—")
+        # stop button only meaningful while running
+        self.btn_stop.configure(state="normal" if active.is_running() else "disabled")
 
     def _animate(self) -> None:
         self.frame += 1
