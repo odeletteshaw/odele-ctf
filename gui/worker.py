@@ -34,10 +34,12 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any) -> None:
     try:
         known_flag, tools, system, user, cleanup = build_task(spec)
         events_q.put({"type": "status", "status": "running"})
-        # Custom (real external) targets get persist=True: the agent keeps going on text
-        # without a flag instead of concluding early. The benchmark keeps default behavior.
+        # Custom (real external) targets get more room and persistence: a hard real target
+        # often needs more turns than the benchmark's 30, and the agent shouldn't conclude
+        # early on text without a flag.
         result = solve(tools, system, user, on_event=on_event, guidance=guidance,
-                       flag_pattern=pattern, persist=(spec.get("kind") == "custom"))
+                       flag_pattern=pattern, persist=(spec.get("kind") == "custom"),
+                       max_turns=(60 if spec.get("kind") == "custom" else 30))
         if known_flag is not None:
             status = "solved" if result.flag == known_flag else "failed"
         else:
