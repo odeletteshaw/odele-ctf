@@ -348,15 +348,18 @@ class ConsoleApp:
                                       justify="left", wraplength=250)
         self.lbl_tools.pack(**pad, pady=(2, 12))
 
-        # Findings / Thinking as tabs (custom toggle — CTkTabview segfaults on macOS).
+        # Findings / Thinking / 题解 as tabs (custom toggle — CTkTabview segfaults on macOS).
         tabbar = ctk.CTkFrame(panel, fg_color="transparent")
         tabbar.pack(fill="x", padx=16, pady=(0, 4))
-        self.btn_tab_findings = ctk.CTkButton(tabbar, text="Findings", width=84, height=26,
+        self.btn_tab_findings = ctk.CTkButton(tabbar, text="Findings", width=72, height=26,
                                               command=lambda: self._switch_tab("findings"))
-        self.btn_tab_findings.pack(side="left", padx=(0, 6))
-        self.btn_tab_think = ctk.CTkButton(tabbar, text="Thinking", width=84, height=26,
+        self.btn_tab_findings.pack(side="left", padx=(0, 4))
+        self.btn_tab_think = ctk.CTkButton(tabbar, text="Thinking", width=72, height=26,
                                            command=lambda: self._switch_tab("thinking"))
-        self.btn_tab_think.pack(side="left")
+        self.btn_tab_think.pack(side="left", padx=(0, 4))
+        self.btn_tab_writeup = ctk.CTkButton(tabbar, text="题解", width=56, height=26,
+                                             command=lambda: self._switch_tab("writeup"))
+        self.btn_tab_writeup.pack(side="left")
 
         self.tab_content = ctk.CTkFrame(panel, fg_color="transparent")
         self.tab_content.pack(fill="both", expand=True, padx=16, pady=(0, 12))
@@ -371,6 +374,11 @@ class ConsoleApp:
         self.txt_think = ctk.CTkTextbox(self.frame_think, font=self.mono_s, wrap="word")
         self.txt_think.pack(fill="both", expand=True)
         self._wheel_scroll(self.txt_think)
+
+        self.frame_writeup = ctk.CTkFrame(self.tab_content, fg_color="transparent")
+        self.txt_writeup = ctk.CTkTextbox(self.frame_writeup, font=self.mono_s, wrap="word")
+        self.txt_writeup.pack(fill="both", expand=True)
+        self._wheel_scroll(self.txt_writeup)
         self._switch_tab("findings")
 
         flag_row = ctk.CTkFrame(panel, fg_color="transparent")
@@ -418,16 +426,20 @@ class ConsoleApp:
 
     def _switch_tab(self, name: str) -> None:
         self._active_tab = name
+        for frame in (self.frame_findings, self.frame_think, self.frame_writeup):
+            frame.pack_forget()
+        self.btn_tab_findings.configure(fg_color="transparent")
+        self.btn_tab_think.configure(fg_color="transparent")
+        self.btn_tab_writeup.configure(fg_color="transparent")
         if name == "findings":
             self.frame_findings.pack(fill="both", expand=True)
-            self.frame_think.pack_forget()
             self.btn_tab_findings.configure(fg_color="#2a3648")
-            self.btn_tab_think.configure(fg_color="transparent")
-        else:
+        elif name == "thinking":
             self.frame_think.pack(fill="both", expand=True)
-            self.frame_findings.pack_forget()
             self.btn_tab_think.configure(fg_color="#2a3648")
-            self.btn_tab_findings.configure(fg_color="transparent")
+        else:
+            self.frame_writeup.pack(fill="both", expand=True)
+            self.btn_tab_writeup.configure(fg_color="#2a3648")
 
     # --- sessions / folders ------------------------------------------------
     def _new_folder(self) -> None:
@@ -553,6 +565,9 @@ class ConsoleApp:
                          text_color=GUIDE_FG)
         elif kind == "note":
             self._bubble("center", "#11151c", self._clip(ev.get("text", ""), 500),
+                         text_color=MUTED, font=self.mono_s)
+        elif kind == "writeup":
+            self._bubble("center", "#11151c", "— 🧾 题解已生成 · 见右侧「题解」标签 —",
                          text_color=MUTED, font=self.mono_s)
         elif kind == "status":
             status = ev.get("status", "")
@@ -738,6 +753,7 @@ class ConsoleApp:
         self.lbl_tools.configure(text="   ".join(f"{k}×{v}" for k, v in st["tools_used"].items()))
         self._set_text(self.txt_findings, "\n".join(str(p) for p in st["paths"]) or "—")
         self._set_text(self.txt_think, self._clip(st["thinking"] or "—", 20000))
+        self._set_text(self.txt_writeup, st["writeup"] or "（解题成功后自动生成）")
         # keep the full flag text (braces + prefix) untouched — never strip it
         self.lbl_flag.configure(text=st["flag"] or "—")
         # stop button only meaningful while running

@@ -45,6 +45,7 @@ class Session:
             "flag": None,
             "paths": [],
             "tools_used": {},
+            "writeup": "",
             "done": False,
         }
         if inherit is not None:
@@ -129,6 +130,8 @@ class Session:
             self.state["status"] = event.get("status", self.state["status"])
             if event.get("flag"):
                 self.state["flag"] = event["flag"]
+        elif kind == "writeup":
+            self.state["writeup"] = event.get("text", "")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -163,6 +166,7 @@ class Session:
             "flag": st.get("flag"),
             "paths": st.get("paths", []),
             "tools_used": st.get("tools_used", {}),
+            "writeup": st.get("writeup", ""),
             "done": True,  # a restored session is not running
         }
         return s

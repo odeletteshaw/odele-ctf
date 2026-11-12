@@ -212,3 +212,51 @@ def solve(
     if not flags:
         flags = GENERAL_FLAG_PATTERN.findall(final_text)
     return SolveResult(flags[-1] if flags else None, final_text, tool_calls)
+
+
+def generate_writeup(
+    user: str,
+    events: list[dict[str, Any]],
+    flag: str | None,
+    model: str | None = None,
+) -> str:
+    """Synthesize a concise Chinese writeup (题解) from a solve's event stream.
+
+    Returns "" on failure (so a writeup never affects the solve's PASS/FAIL verdict).
+    """
+    if not config.API_KEY:
+        return ""
+    client = OpenAI(base_url=config.API_BASE, api_key=config.API_KEY)
+    lines: list[str] = []
+    for ev in events[-60:]:  # keep the recent tail so the prompt stays bounded
+        kind = ev.get("type")
+        if kind == "agent":
+            lines.append(f"[agent] {ev.get('text', '')}")
+        elif kind == "tool_call":
+            lines.append(f"[tool {ev.get('name', '?')}] {ev.get('args', '')}")
+        elif kind == "tool_result":
+            out = str(ev.get("output", ""))
+            if len(out) > 800:
+                out = out[:800] + " …"
+            lines.append(f"[result] {out}")
+        elif kind == "guidance":
+            lines.append(f"[you] {ev.get('text', '')}")
+    transcript = "\n".join(lines)
+    prompt = (
+        "你刚刚解完一道 CTF 题。请根据下面的题目和解题过程，写一份简洁的中文题解，"
+        "包含这几节：题目、思路/漏洞、关键步骤、最终 flag。只写 transcript 里真实发生的内容，"
+        "不要编造，约 200–400 字。\n\n"
+        f"=== 题目 ===\n{user}\n\n=== 解题过程 ===\n{transcript}\n\n"
+        f"最终 flag：{flag or '（未解出）'}\n\n写题解："
+    )
+    try:
+        response = client.chat.completions.create(
+            model=model or config.DEFAULT_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            timeout=config.API_TIMEOUT,
+        )
+        return (response.choices[0].message.content or "").strip()
+    except Exception as error:  # noqa: BLE001
+        print(f"[writeup] generation failed: {error}", flush=True)
+        return ""

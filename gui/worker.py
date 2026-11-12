@@ -10,12 +10,15 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.agent import solve  # noqa: E402
+from core.agent import generate_writeup, solve  # noqa: E402
 from gui.builder import build_task  # noqa: E402
 
 
 def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any) -> None:
+    events_log: list[dict[str, Any]] = []
+
     def on_event(event: dict[str, Any]) -> None:
+        events_log.append(event)
         events_q.put(event)
 
     def guidance() -> str | None:
@@ -46,6 +49,11 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any) -> None:
         else:
             status = "solved" if result.flag else "done"  # custom: can't verify, just report
         events_q.put({"type": "status", "status": status, "flag": result.flag})
+        # After a solve, synthesize a writeup so the console can show a human-readable 题解.
+        if status == "solved":
+            writeup = generate_writeup(user, events_log, result.flag)
+            if writeup:
+                events_q.put({"type": "writeup", "text": writeup})
     except Exception as error:
         events_q.put({"type": "status", "status": "error",
                       "error": f"{type(error).__name__}: {error}"})
