@@ -299,17 +299,30 @@ class ConsoleApp:
                                       justify="left", wraplength=250)
         self.lbl_tools.pack(**pad, pady=(2, 12))
 
-        # Findings / Thinking as tabs, so each gets the full height.
-        self.tabs = ctk.CTkTabview(panel, corner_radius=10)
-        self.tabs.pack(fill="both", expand=True, padx=16, pady=(0, 12))
-        self.tab_findings = self.tabs.add("Findings")
-        self.tab_think = self.tabs.add("Thinking")
-        self.txt_findings = ctk.CTkTextbox(self.tab_findings, font=self.mono_s, wrap="word")
+        # Findings / Thinking as tabs (custom toggle — CTkTabview segfaults on macOS).
+        tabbar = ctk.CTkFrame(panel, fg_color="transparent")
+        tabbar.pack(fill="x", padx=16, pady=(0, 4))
+        self.btn_tab_findings = ctk.CTkButton(tabbar, text="Findings", width=84, height=26,
+                                              command=lambda: self._switch_tab("findings"))
+        self.btn_tab_findings.pack(side="left", padx=(0, 6))
+        self.btn_tab_think = ctk.CTkButton(tabbar, text="Thinking", width=84, height=26,
+                                           command=lambda: self._switch_tab("thinking"))
+        self.btn_tab_think.pack(side="left")
+
+        self.tab_content = ctk.CTkFrame(panel, fg_color="transparent")
+        self.tab_content.pack(fill="both", expand=True, padx=16, pady=(0, 12))
+
+        self.frame_findings = ctk.CTkFrame(self.tab_content, fg_color="transparent")
+        self.frame_findings.pack(fill="both", expand=True)
+        self.txt_findings = ctk.CTkTextbox(self.frame_findings, font=self.mono_s, wrap="word")
         self.txt_findings.pack(fill="both", expand=True)
         self._wheel_scroll(self.txt_findings)
-        self.txt_think = ctk.CTkTextbox(self.tab_think, font=self.mono_s, wrap="word")
+
+        self.frame_think = ctk.CTkFrame(self.tab_content, fg_color="transparent")
+        self.txt_think = ctk.CTkTextbox(self.frame_think, font=self.mono_s, wrap="word")
         self.txt_think.pack(fill="both", expand=True)
         self._wheel_scroll(self.txt_think)
+        self._switch_tab("findings")
 
         flag_row = ctk.CTkFrame(panel, fg_color="transparent")
         flag_row.pack(fill="x", padx=16, pady=(4, 16))
@@ -353,6 +366,19 @@ class ConsoleApp:
         box.bind("<MouseWheel>", handler)
         box.bind("<Button-4>", handler)
         box.bind("<Button-5>", handler)
+
+    def _switch_tab(self, name: str) -> None:
+        self._active_tab = name
+        if name == "findings":
+            self.frame_findings.pack(fill="both", expand=True)
+            self.frame_think.pack_forget()
+            self.btn_tab_findings.configure(fg_color="#2a3648")
+            self.btn_tab_think.configure(fg_color="transparent")
+        else:
+            self.frame_think.pack(fill="both", expand=True)
+            self.frame_findings.pack_forget()
+            self.btn_tab_think.configure(fg_color="#2a3648")
+            self.btn_tab_findings.configure(fg_color="transparent")
 
     # --- sessions / folders ------------------------------------------------
     def _new_folder(self) -> None:
