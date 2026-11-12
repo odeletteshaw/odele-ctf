@@ -240,16 +240,16 @@ class ConsoleApp:
             text_color=FG, height=30, corner_radius=6, command=toggle,
             font=ctk.CTkFont(family="Menlo", size=12, weight="bold"),
         )
-        head.pack(fill="x", padx=20, pady=(8, 0))
+        head.pack(fill="x", padx=26, pady=(8, 0))
         if open_by_default:
             body.pack(**body_pack)
         return body
 
     def _add_url_row(self, value: str = "") -> None:
         row = ctk.CTkFrame(self.urls_box, fg_color="transparent")
-        row.pack(fill="x", pady=2)
-        entry = ctk.CTkEntry(row, placeholder_text="https://target.ctf/…", font=self.mono)
-        entry.pack(side="left", fill="x", expand=True)
+        row.pack(anchor="w", pady=2)
+        entry = ctk.CTkEntry(row, placeholder_text="https://target.ctf/…", width=440, font=self.mono)
+        entry.pack(side="left")
         if value:
             entry.insert(0, value)
         ctk.CTkButton(row, text="−", width=28, height=28, fg_color="#2a3648",
@@ -284,9 +284,9 @@ class ConsoleApp:
             child.destroy()
         for p in self._attachment_paths:
             row = ctk.CTkFrame(self.attach_box, fg_color="transparent")
-            row.pack(fill="x", pady=2)
+            row.pack(anchor="w", pady=2)
             ctk.CTkLabel(row, text=Path(p).name, font=self.mono_s, anchor="w",
-                         text_color=TOOL_FG).pack(side="left", fill="x", expand=True)
+                         text_color=TOOL_FG).pack(side="left")
             ctk.CTkButton(row, text="−", width=28, height=28, fg_color="#2a3648",
                           hover_color="#35445a",
                           command=lambda path=p: self._remove_attachment(path)).pack(
