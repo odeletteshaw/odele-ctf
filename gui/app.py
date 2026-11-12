@@ -723,6 +723,8 @@ class ConsoleApp:
         return self.txt_think.get("1.0", "end").strip()
 
     def _set_text(self, box: ctk.CTkTextbox, text: str) -> None:
+        if box.get("1.0", "end-1c") == text:
+            return  # unchanged — rewriting here would clear the user's selection
         box.delete("1.0", "end")
         box.insert("end", text)
 
