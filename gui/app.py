@@ -11,6 +11,7 @@ Only rendering lives here; all agent logic is in the Session subprocess.
 """
 
 import random
+import tkinter as tk
 import tkinter.simpledialog as simpledialog
 from urllib.parse import urlparse
 
@@ -76,13 +77,19 @@ class ConsoleApp:
     # --- layout ------------------------------------------------------------
     def _build(self) -> None:
         self.root.grid_rowconfigure(0, weight=1)
-        # rail (0) and right (3) are fixed width; center (1) fills; a draggable divider (2)
-        # sits between center and right.
-        self.root.grid_columnconfigure(1, weight=1)
+        self.root.grid_columnconfigure(0, weight=0)  # rail: fixed 230px
+        self.root.grid_columnconfigure(1, weight=1)  # paned (center + right) fills
         self._build_rail()
+        self._build_paned()
+
+    def _build_paned(self) -> None:
+        self.paned = tk.PanedWindow(self.root, orient="horizontal", sashwidth=6,
+                                    bd=0, relief="flat", bg="#20283a")
+        self.paned.grid(row=0, column=1, sticky="nsew")
         self._build_center()
-        self._build_divider()
         self._build_right()
+        self.paned.add(self.center_wrap, minsize=320, stretch="always")
+        self.paned.add(self.right_panel, minsize=160, width=290, stretch="never")
 
     def _build_rail(self) -> None:
         rail = ctk.CTkFrame(self.root, width=230, corner_radius=0)
@@ -100,26 +107,9 @@ class ConsoleApp:
         self.rail_list = ctk.CTkScrollableFrame(rail, fg_color="transparent")
         self.rail_list.pack(fill="both", expand=True, padx=4)
 
-    def _build_divider(self) -> None:
-        self.divider = ctk.CTkFrame(self.root, width=6, corner_radius=0, fg_color="#20283a",
-                                    cursor="sb_h_double_arrow")
-        self.divider.grid(row=0, column=2, sticky="ns")
-        self.divider.grid_propagate(False)
-        self.divider.bind("<Button-1>", self._drag_start)
-        self.divider.bind("<B1-Motion>", self._drag_move)
-
-    def _drag_start(self, event: Any) -> None:
-        self._drag_origin = int(event.x_root)
-        self._drag_width = int(self.right_panel.cget("width"))
-
-    def _drag_move(self, event: Any) -> None:
-        dx = int(event.x_root) - self._drag_origin
-        new_w = max(160, min(800, self._drag_width - dx))
-        self.right_panel.configure(width=new_w)
-
     def _build_center(self) -> None:
-        wrap = ctk.CTkFrame(self.root, corner_radius=0, fg_color="#0f1218")
-        wrap.grid(row=0, column=1, sticky="nsew")
+        wrap = ctk.CTkFrame(self.paned, corner_radius=0, fg_color="#0f1218")
+        self.center_wrap = wrap
         wrap.grid_rowconfigure(1, weight=1)
         wrap.grid_columnconfigure(0, weight=1)
         self.center_head = ctk.CTkLabel(wrap, text="", text_color=FG, font=self.bold, anchor="w")
@@ -286,9 +276,7 @@ class ConsoleApp:
         self.add_session(self.manager.new_session(spec, title, category, folder=folder))
 
     def _build_right(self) -> None:
-        self.right_panel = ctk.CTkFrame(self.root, width=290, corner_radius=0)
-        self.right_panel.grid(row=0, column=3, sticky="ns")
-        self.right_panel.grid_propagate(False)
+        self.right_panel = ctk.CTkFrame(self.paned, width=290, corner_radius=0)
         panel = self.right_panel
         pad = {"anchor": "w", "padx": 16}
 
