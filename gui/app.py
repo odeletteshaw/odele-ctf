@@ -50,7 +50,7 @@ STATUS_GLYPH = {"solved": "✓", "failed": "✗", "error": "⚠", "idle": "○",
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 MAX_OUT = 1400
 MAX_BUBBLE = 2000
-MAX_RENDER_EVENTS = 100
+MAX_RENDER_EVENTS = 20
 WRAP = 560
 
 
