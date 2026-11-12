@@ -9,7 +9,9 @@ A spec is a small picklable dict:
 
 import importlib
 import secrets
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -62,14 +64,49 @@ def _benchmark(category: str, name: str) -> Built:
     raise ValueError(f"unsupported category: {category}")
 
 
-def _custom(url: str, description: str) -> Built:
-    """A real external target: the agent gets the web toolset (http + run_python), the
-    http tool locked to this origin. No known flag — any flag found is reported."""
+def _custom(urls: list[str], description: str, attachments: list[str]) -> Built:
+    """A real external target: the agent gets the web toolset (http + run_python), the http
+    tool able to hit each listed origin, and any attached files copied into a persistent
+    workspace the run_python tool can read. No known flag — any flag found is reported."""
     web = importlib.import_module("web.agent")
     client = web.new_http_client()
-    tools = web.web_tools(url, client)
-    user = f"Target: {url}\n\nChallenge description: {description or '(none given)'}"
-    return None, tools, web.SYSTEM_PROMPT, user, client.close
+    workdir: Path | None = None
+    attachment_block = ""
+    if attachments:
+        workdir = Path(tempfile.mkdtemp(prefix="ctf-custom-"))
+        lines: list[str] = []
+        for path_str in attachments:
+            path = Path(path_str)
+            name = path.name
+            data = path.read_bytes()
+            (workdir / name).write_bytes(data)
+            entry = f"  - {name} ({len(data)} bytes)"
+            # Inline small text files so source code is visible without a tool call.
+            if len(data) <= 8192:
+                try:
+                    text = data.decode("utf-8")
+                except UnicodeDecodeError:
+                    text = None
+                if text is not None:
+                    entry += "\n```\n" + text + "\n```"
+            lines.append(entry)
+        attachment_block = (
+            "Attached files (also readable via run_python's working directory):\n"
+            + "\n".join(lines) + "\n\n"
+        )
+    tools = web.web_tools_multi(urls, client, workdir)
+    targets = "\n".join(f"[{i}] {u}" for i, u in enumerate(urls))
+    user = (
+        f"Targets:\n{targets}\n\n"
+        f"{attachment_block}Challenge description: {description or '(none given)'}"
+    )
+
+    def cleanup() -> None:
+        client.close()
+        if workdir is not None:
+            shutil.rmtree(workdir, ignore_errors=True)
+
+    return None, tools, web.SYSTEM_PROMPT, user, cleanup
 
 
 def build_task(spec: dict[str, Any]) -> Built:
@@ -77,5 +114,8 @@ def build_task(spec: dict[str, Any]) -> Built:
     if kind == "benchmark":
         return _benchmark(spec["category"], spec["name"])
     if kind == "custom":
-        return _custom(spec["url"], spec.get("description", ""))
+        # Accept both the old single-url spec and the new multi-url + attachments spec.
+        urls = spec.get("urls") or ([spec["url"]] if spec.get("url") else [])
+        attachments = spec.get("attachments") or []
+        return _custom(urls, spec.get("description", ""), attachments)
     raise ValueError(f"unknown task kind: {kind}")

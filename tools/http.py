@@ -1,5 +1,6 @@
 """The http_request agent capability, locked to a single target origin."""
 
+import copy
 from typing import Any
 
 import httpx
@@ -67,33 +68,67 @@ def http_tool(target: str, client: httpx.Client) -> Tool:
     )
 
 
+def _pick_target(targets: list[str], args: dict[str, Any]) -> str:
+    """Resolve the 0-based 'target' argument to one of the allowed origins."""
+    idx = args.get("target", 0)
+    if isinstance(idx, bool) or not isinstance(idx, int) or not (0 <= idx < len(targets)):
+        raise OutOfScope(f"target index {idx!r} out of range 0..{len(targets)-1}")
+    return targets[idx]
+
+
+def multi_http_tool(targets: list[str], client: httpx.Client) -> Tool:
+    """http_request that can hit any of several listed targets (0-based 'target' arg)."""
+
+    def handler(args: dict[str, Any]) -> str:
+        try:
+            target = _pick_target(targets, args)
+        except OutOfScope as error:
+            return f"Error: {error}"
+        return run_http(target, client, args)
+
+    params = copy.deepcopy(HTTP_PARAMETERS)
+    params["properties"]["target"] = {
+        "type": "integer",
+        "description": "Which target to hit (0-based index into the target list in the prompt). Omit for the first target.",
+    }
+    return Tool(
+        name="http_request",
+        description=(
+            "Send one HTTP request to a challenge target. 'target' selects which of the "
+            "listed targets to hit (0-based index; see the target list in the prompt). "
+            "Redirects are returned, not followed."
+        ),
+        parameters=params,
+        handler=handler,
+    )
+
+
 MAX_BATCH = 60
 SNIPPET = 160
+
+
+def _run_batch(target: str, client: httpx.Client, reqs: list) -> str:
+    if len(reqs) > MAX_BATCH:
+        return f"Error: too many requests ({len(reqs)} > {MAX_BATCH}); split the batch."
+    lines: list[str] = []
+    for idx, req in enumerate(reqs):
+        method = str(req.get("method", "GET")).upper()
+        path = str(req.get("path", "/"))
+        try:
+            url = build_url(target, path)
+            response = client.request(
+                method, url, headers=req.get("headers"), content=req.get("body")
+            )
+            snippet = " ".join(response.text.split())[:SNIPPET]
+            lines.append(f"{idx}: {response.status_code} {method} {path} | {snippet}")
+        except (OutOfScope, httpx.HTTPError, httpx.InvalidURL) as error:
+            lines.append(f"{idx}: ERR {method} {path} {error}")
+    return "\n".join(lines)
 
 
 def http_batch_tool(target: str, client: httpx.Client) -> Tool:
     """A fuzzing-friendly batch variant of http_request: send many requests in one call and
     get one compact line per request (status + path + a short body snippet)."""
-
-    def handler(args: dict[str, Any]) -> str:
-        reqs = args.get("requests", [])
-        if len(reqs) > MAX_BATCH:
-            return f"Error: too many requests ({len(reqs)} > {MAX_BATCH}); split the batch."
-        lines: list[str] = []
-        for idx, req in enumerate(reqs):
-            method = str(req.get("method", "GET")).upper()
-            path = str(req.get("path", "/"))
-            try:
-                url = build_url(target, path)
-                response = client.request(
-                    method, url, headers=req.get("headers"), content=req.get("body")
-                )
-                snippet = " ".join(response.text.split())[:SNIPPET]
-                lines.append(f"{idx}: {response.status_code} {method} {path} | {snippet}")
-            except (OutOfScope, httpx.HTTPError, httpx.InvalidURL) as error:
-                lines.append(f"{idx}: ERR {method} {path} {error}")
-        return "\n".join(lines)
-
     return Tool(
         name="http_batch",
         description=(
@@ -110,6 +145,44 @@ def http_batch_tool(target: str, client: httpx.Client) -> Tool:
                     "items": HTTP_PARAMETERS,
                     "description": "List of requests to send.",
                 }
+            },
+            "required": ["requests"],
+        },
+        handler=lambda args: _run_batch(target, client, args.get("requests", [])),
+    )
+
+
+def multi_http_batch_tool(targets: list[str], client: httpx.Client) -> Tool:
+    """http_batch variant that can target any of several listed origins."""
+
+    def handler(args: dict[str, Any]) -> str:
+        try:
+            target = _pick_target(targets, args)
+        except OutOfScope as error:
+            return f"Error: {error}"
+        return _run_batch(target, client, args.get("requests", []))
+
+    return Tool(
+        name="http_batch",
+        description=(
+            "Send up to 60 HTTP requests to one challenge target in ONE call and get one "
+            "compact line per request (index, status, path, and a short body snippet). "
+            "'target' selects which of the listed targets to hit (0-based). Use it to fuzz or "
+            "brute-force many candidate paths/params at once; then follow up on hits with "
+            "http_request for the full response."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "requests": {
+                    "type": "array",
+                    "items": HTTP_PARAMETERS,
+                    "description": "List of requests to send.",
+                },
+                "target": {
+                    "type": "integer",
+                    "description": "Which target to hit (0-based index into the target list). Omit for the first target.",
+                },
             },
             "required": ["requests"],
         },

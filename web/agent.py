@@ -15,7 +15,13 @@ import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.agent import SolveResult, Tool, solve  # noqa: E402
-from tools.http import http_batch_tool, http_tool, new_http_client  # noqa: E402
+from tools.http import (  # noqa: E402
+    http_batch_tool,
+    http_tool,
+    multi_http_batch_tool,
+    multi_http_tool,
+    new_http_client,
+)
 from tools.sandbox import python_tool  # noqa: E402
 
 SYSTEM_PROMPT = """You are an expert web penetration tester solving a CTF challenge.
@@ -78,6 +84,15 @@ When you have it, end your final message with the flag on its own line."""
 
 def web_tools(target: str, client: httpx.Client) -> list[Tool]:
     return [http_tool(target, client), http_batch_tool(target, client), python_tool()]
+
+
+def web_tools_multi(
+    urls: list[str], client: httpx.Client, workdir: Path | None = None
+) -> list[Tool]:
+    """Custom-target tools: one http_request/http_batch that can hit any of several origins
+    (via a 0-based 'target' argument), plus run_python — pointed at a persistent workspace if
+    the user attached files for the agent to read."""
+    return [multi_http_tool(urls, client), multi_http_batch_tool(urls, client), python_tool(workdir)]
 
 
 def solve_web(

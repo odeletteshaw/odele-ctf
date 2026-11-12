@@ -13,6 +13,7 @@ Only rendering lives here; all agent logic is in the Session subprocess.
 import random
 import signal
 import tkinter as tk
+import tkinter.filedialog as filedialog
 import tkinter.messagebox as messagebox
 import tkinter.simpledialog as simpledialog
 from urllib.parse import urlparse
@@ -195,9 +196,24 @@ class ConsoleApp:
         self.chal_menu = ctk.CTkOptionMenu(self.bench_panel, values=["🎲  random (unknown)"], width=380)
         self.chal_menu.pack(anchor="w", pady=(6, 0))
         self.custom_panel = ctk.CTkFrame(self.panel_area, fg_color="transparent")
-        self.url_entry = ctk.CTkEntry(self.custom_panel, placeholder_text="https://target.ctf/…",
-                                      width=440, font=self.mono)
-        self.url_entry.pack(anchor="w", pady=4)
+
+        ctk.CTkLabel(self.custom_panel, text="TARGET URLs", text_color=MUTED,
+                     font=self.mono_s).pack(anchor="w", pady=(0, 2))
+        self.urls_box = ctk.CTkFrame(self.custom_panel, fg_color="transparent")
+        self.urls_box.pack(anchor="w", fill="x")
+        self.url_entries: list[ctk.CTkEntry] = []
+        self._add_url_row("")
+        ctk.CTkButton(self.custom_panel, text="＋ Add URL", width=110, height=26,
+                      command=lambda: self._add_url_row("")).pack(anchor="w", pady=(2, 8))
+
+        ctk.CTkLabel(self.custom_panel, text="ATTACHMENTS", text_color=MUTED,
+                     font=self.mono_s).pack(anchor="w", pady=(0, 2))
+        self.attach_box = ctk.CTkFrame(self.custom_panel, fg_color="transparent")
+        self.attach_box.pack(anchor="w", fill="x")
+        self._attachment_paths: list[str] = []
+        ctk.CTkButton(self.custom_panel, text="＋ Add file", width=110, height=26,
+                      command=self._add_attachment).pack(anchor="w", pady=(2, 8))
+
         self.desc_entry = ctk.CTkEntry(self.custom_panel, placeholder_text="description / hint (optional)",
                                        width=440, font=self.mono)
         self.desc_entry.pack(anchor="w", pady=4)
@@ -233,6 +249,53 @@ class ConsoleApp:
         custom = self.mode_btn.get() == "Custom URL"
         (self.bench_panel if custom else self.custom_panel).pack_forget()
         (self.custom_panel if custom else self.bench_panel).pack(anchor="w")
+
+    def _add_url_row(self, value: str = "") -> None:
+        row = ctk.CTkFrame(self.urls_box, fg_color="transparent")
+        row.pack(fill="x", pady=2)
+        entry = ctk.CTkEntry(row, placeholder_text="https://target.ctf/…", font=self.mono)
+        entry.pack(side="left", fill="x", expand=True)
+        if value:
+            entry.insert(0, value)
+        ctk.CTkButton(row, text="−", width=28, height=28, fg_color="#2a3648",
+                      hover_color="#35445a",
+                      command=lambda: self._remove_url_row(row, entry)).pack(side="left", padx=(4, 0))
+        self.url_entries.append(entry)
+
+    def _remove_url_row(self, row: ctk.CTkFrame, entry: ctk.CTkEntry) -> None:
+        row.destroy()
+        if entry in self.url_entries:
+            self.url_entries.remove(entry)
+        if not self.url_entries:
+            self._add_url_row("")
+
+    def _collect_urls(self) -> list[str]:
+        return [e.get().strip() for e in self.url_entries if e.get().strip()]
+
+    def _add_attachment(self) -> None:
+        paths = filedialog.askopenfilenames(parent=self.root, title="Select attachment file(s)")
+        for p in paths:
+            if p and p not in self._attachment_paths and Path(p).is_file():
+                self._attachment_paths.append(p)
+        self._render_attachments()
+
+    def _remove_attachment(self, path: str) -> None:
+        if path in self._attachment_paths:
+            self._attachment_paths.remove(path)
+        self._render_attachments()
+
+    def _render_attachments(self) -> None:
+        for child in self.attach_box.winfo_children():
+            child.destroy()
+        for p in self._attachment_paths:
+            row = ctk.CTkFrame(self.attach_box, fg_color="transparent")
+            row.pack(fill="x", pady=2)
+            ctk.CTkLabel(row, text=Path(p).name, font=self.mono_s, anchor="w",
+                         text_color=TOOL_FG).pack(side="left", fill="x", expand=True)
+            ctk.CTkButton(row, text="−", width=28, height=28, fg_color="#2a3648",
+                          hover_color="#35445a",
+                          command=lambda path=p: self._remove_attachment(path)).pack(
+                side="left", padx=(4, 0))
 
     def _selected_dirs(self) -> list[str]:
         return [cat for cat, box in self.dir_boxes.items() if box.get()]
@@ -273,7 +336,12 @@ class ConsoleApp:
             self.dir_boxes["web"].select()
         self.mode_btn.set("Benchmark")
         self._mode_changed()
-        self.url_entry.delete(0, "end")
+        for child in self.urls_box.winfo_children():
+            child.destroy()
+        self.url_entries.clear()
+        self._add_url_row("")
+        self._attachment_paths.clear()
+        self._render_attachments()
         self.desc_entry.delete(0, "end")
         self.flag_entry.delete(0, "end")
         self.name_entry.delete(0, "end")
@@ -284,13 +352,18 @@ class ConsoleApp:
 
     def _start_from_setup(self) -> None:
         if self.mode_btn.get() == "Custom URL":
-            url = self.url_entry.get().strip()
-            if not (url.startswith("http://") or url.startswith("https://")):
-                self.setup_hint.configure(text="enter a target URL starting with http:// or https://")
+            urls = self._collect_urls()
+            if not urls:
+                self.setup_hint.configure(text="enter at least one target URL (http:// or https://)")
                 return
-            spec = {"kind": "custom", "url": url, "description": self.desc_entry.get().strip(),
-                    "flag_prefix": self.flag_entry.get().strip() or "flag"}
-            title = urlparse(url).netloc or url[:28]
+            for u in urls:
+                if not (u.startswith("http://") or u.startswith("https://")):
+                    self.setup_hint.configure(text="target URLs must start with http:// or https://")
+                    return
+            spec = {"kind": "custom", "urls": urls, "description": self.desc_entry.get().strip(),
+                    "flag_prefix": self.flag_entry.get().strip() or "flag",
+                    "attachments": list(self._attachment_paths)}
+            title = urlparse(urls[0]).netloc or urls[0][:28]
             category = "custom"
         else:
             dirs = self._selected_dirs()
@@ -686,7 +759,16 @@ class ConsoleApp:
         if spec.get("kind") == "custom":
             self.mode_btn.set("Custom URL")
             self._mode_changed()
-            self.url_entry.delete(0, "end"); self.url_entry.insert(0, spec.get("url", ""))
+            urls = spec.get("urls") or ([spec.get("url")] if spec.get("url") else [])
+            for child in self.urls_box.winfo_children():
+                child.destroy()
+            self.url_entries.clear()
+            for u in urls:
+                self._add_url_row(u)
+            if not urls:
+                self._add_url_row("")
+            self._attachment_paths = list(spec.get("attachments") or [])
+            self._render_attachments()
             self.desc_entry.delete(0, "end"); self.desc_entry.insert(0, spec.get("description", ""))
             self.flag_entry.delete(0, "end"); self.flag_entry.insert(0, spec.get("flag_prefix", "flag"))
         else:
