@@ -69,6 +69,7 @@ class ConsoleApp:
         self.bold = ctk.CTkFont(family="Menlo", size=15, weight="bold")
 
         self._build()
+        self._render_rail()  # show sessions restored from disk
         self.root.bind("<Command-c>", self._copy_flag)
         self.root.bind("<Control-c>", self._copy_flag)
         self.root.after(poll_ms, self._poll)
@@ -295,7 +296,10 @@ class ConsoleApp:
         self.btn_rename.pack(anchor="w", padx=16, pady=(0, 6))
         self.btn_continue = ctk.CTkButton(panel, text="↻ Continue (inherit)", width=170, height=28,
                                           command=self._continue_active, anchor="w")
-        self.btn_continue.pack(anchor="w", padx=16, pady=(0, 8))
+        self.btn_continue.pack(anchor="w", padx=16, pady=(0, 6))
+        self.btn_rerun = ctk.CTkButton(panel, text="↻ Re-run (fresh)", width=170, height=28,
+                                       command=self._rerun_active, anchor="w")
+        self.btn_rerun.pack(anchor="w", padx=16, pady=(0, 8))
         self.lbl_counts = ctk.CTkLabel(panel, text="replies 0 · tool calls 0", font=self.mono)
         self.lbl_counts.pack(**pad)
         self.lbl_tools = ctk.CTkLabel(panel, text="", text_color=MUTED, font=self.mono_s,
@@ -505,6 +509,16 @@ class ConsoleApp:
             "context": self._format_transcript(session.transcript),
             "spec": dict(session.spec),
         }
+        self._show_setup()
+        self._prefill_setup(session.spec, session.title)
+        if session.folder and session.folder in self.manager.folders:
+            self.folder_menu.set(session.folder)
+
+    def _rerun_active(self) -> None:
+        session = self.manager.active
+        if not session:
+            return
+        self._inherit = None  # fresh start, no inherited context
         self._show_setup()
         self._prefill_setup(session.spec, session.title)
         if session.folder and session.folder in self.manager.folders:
