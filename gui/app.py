@@ -199,7 +199,7 @@ class ConsoleApp:
 
         ctk.CTkLabel(self.custom_panel, text="TARGET URLs", text_color=MUTED,
                      font=self.mono_s).pack(anchor="w", pady=(0, 2))
-        self.urls_box = ctk.CTkFrame(self.custom_panel, fg_color="transparent")
+        self.urls_box = ctk.CTkFrame(self.custom_panel, fg_color="transparent", height=0)
         self.urls_box.pack(anchor="w", fill="x")
         self.url_entries: list[ctk.CTkEntry] = []
         self._add_url_row("")
@@ -208,7 +208,7 @@ class ConsoleApp:
 
         ctk.CTkLabel(self.custom_panel, text="ATTACHMENTS", text_color=MUTED,
                      font=self.mono_s).pack(anchor="w", pady=(0, 2))
-        self.attach_box = ctk.CTkFrame(self.custom_panel, fg_color="transparent")
+        self.attach_box = ctk.CTkFrame(self.custom_panel, fg_color="transparent", height=0)
         self.attach_box.pack(anchor="w", fill="x")
         self._attachment_paths: list[str] = []
         ctk.CTkButton(self.custom_panel, text="＋ Add file", width=110, height=26,
