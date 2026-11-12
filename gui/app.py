@@ -49,6 +49,8 @@ STATUS_COLORS = {
 STATUS_GLYPH = {"solved": "✓", "failed": "✗", "error": "⚠", "idle": "○", "cancelled": "■"}
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 MAX_OUT = 1400
+MAX_BUBBLE = 2000
+MAX_RENDER_EVENTS = 100
 WRAP = 560
 
 
@@ -445,8 +447,14 @@ class ConsoleApp:
         self.center_head.configure(text=f"{session.title}  ·  {session.category}", text_color=FG)
         for child in self.chat.winfo_children():
             child.destroy()
+        transcript = session.transcript
+        if len(transcript) > MAX_RENDER_EVENTS:
+            hidden = len(transcript) - MAX_RENDER_EVENTS
+            self._bubble("center", "#11151c", f"— {hidden} earlier events hidden —",
+                         text_color=MUTED, font=self.mono_s)
+            transcript = transcript[-MAX_RENDER_EVENTS:]
         self._rendered[session.id] = 0
-        for ev in session.transcript:
+        for ev in transcript:
             self._render(ev)
         self._rendered[session.id] = len(session.transcript)
         self._refresh_panel()
@@ -471,20 +479,25 @@ class ConsoleApp:
         except Exception:
             pass
 
+    def _clip(self, text: str, n: int) -> str:
+        if len(text) > n:
+            return text[:n] + f"  …(+{len(text) - n})"
+        return text
+
     def _render(self, ev: dict[str, Any]) -> None:
         kind = ev.get("type")
         if kind == "agent":
-            self._bubble("w", AGENT_BG, f"🧠  {ev['text']}")
+            self._bubble("w", AGENT_BG, f"🧠  {self._clip(ev.get('text', ''), MAX_BUBBLE)}")
         elif kind == "tool_call":
-            self._bubble("w", TOOL_BG, f"⚙  {ev['name']}  {ev.get('args', '')}",
+            args = self._clip(str(ev.get("args", "")), 800)
+            self._bubble("w", TOOL_BG, f"⚙  {ev['name']}  {args}",
                          text_color=TOOL_FG, font=self.mono_s, full=True)
         elif kind == "tool_result":
-            out = ev.get("output", "")
-            if len(out) > MAX_OUT:
-                out = out[:MAX_OUT] + f"  …(+{len(out) - MAX_OUT})"
+            out = self._clip(ev.get("output", ""), MAX_OUT)
             self._bubble("w", RESULT_BG, f"↳ {out}", text_color=MUTED, font=self.mono_s, full=True)
         elif kind == "guidance":
-            self._bubble("e", GUIDE_BG, f"you ▸ {ev['text']}", text_color=GUIDE_FG)
+            self._bubble("e", GUIDE_BG, f"you ▸ {self._clip(ev.get('text', ''), 500)}",
+                         text_color=GUIDE_FG)
         elif kind == "status":
             status = ev.get("status", "")
             if status in ("solved", "failed", "error", "cancelled"):
@@ -636,7 +649,7 @@ class ConsoleApp:
         self.lbl_counts.configure(text=f"replies {st['replies']} · tool calls {st['tool_calls']}")
         self.lbl_tools.configure(text="   ".join(f"{k}×{v}" for k, v in st["tools_used"].items()))
         self._set_text(self.txt_findings, "\n".join(st["paths"]) or "—")
-        self._set_text(self.txt_think, st["thinking"] or "—")
+        self._set_text(self.txt_think, self._clip(st["thinking"] or "—", 20000))
         # keep the full flag text (braces + prefix) untouched — never strip it
         self.lbl_flag.configure(text=st["flag"] or "—")
         # stop button only meaningful while running
