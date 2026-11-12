@@ -33,6 +33,8 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any) -> None:
     cleanup = lambda: None  # noqa: E731
     try:
         known_flag, tools, system, user, cleanup = build_task(spec)
+        if spec.get("context"):
+            user = spec["context"] + "\n\n---\n\n" + user
         events_q.put({"type": "status", "status": "running"})
         # The GUI passes a per-session turn budget (default 100). Custom targets also get
         # persist=True so the agent keeps going on text without a flag.

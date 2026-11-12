@@ -58,6 +58,7 @@ class ConsoleApp:
         self.frame = 0
         self._rendered: dict[int, int] = {}
         self._rows: dict[int, ctk.CTkButton] = {}
+        self._inherit: dict[str, Any] | None = None
 
         self.root = ctk.CTk()
         self.root.title("odele-ctf · supervision console")
@@ -75,15 +76,17 @@ class ConsoleApp:
     # --- layout ------------------------------------------------------------
     def _build(self) -> None:
         self.root.grid_rowconfigure(0, weight=1)
-        self.root.grid_columnconfigure(1, weight=1)
+        # left 1/5 · center 2/5 · right 2/5
+        self.root.grid_columnconfigure(0, weight=1)
+        self.root.grid_columnconfigure(1, weight=2)
+        self.root.grid_columnconfigure(2, weight=2)
         self._build_rail()
         self._build_center()
         self._build_right()
 
     def _build_rail(self) -> None:
-        rail = ctk.CTkFrame(self.root, width=230, corner_radius=0)
-        rail.grid(row=0, column=0, sticky="ns")
-        rail.grid_propagate(False)
+        rail = ctk.CTkFrame(self.root, corner_radius=0)
+        rail.grid(row=0, column=0, sticky="nsew")
         ctk.CTkLabel(rail, text="SESSIONS", text_color=MUTED,
                      font=ctk.CTkFont(family="Menlo", size=11, weight="bold")).pack(
             anchor="w", padx=16, pady=(16, 4))
@@ -205,6 +208,7 @@ class ConsoleApp:
         options = ["🎲  random (unknown)"]
         for cat in self._selected_dirs():
             options += [f"{cat}/{name}" for name in list_challenges(cat)]
+        self._chal_options = options
         self.chal_menu.configure(values=options)
         if self.chal_menu.get() not in options:
             self.chal_menu.set(options[0])
@@ -256,14 +260,16 @@ class ConsoleApp:
             spec["max_turns"] = max(1, int(self.turns_entry.get().strip() or "100"))
         except ValueError:
             spec["max_turns"] = 100
+        if self._inherit:
+            spec["context"] = self._inherit["context"]
+            self._inherit = None
         self.setup_hint.configure(text="")
         self.setup.grid_remove()
         self.add_session(self.manager.new_session(spec, title, category, folder=folder))
 
     def _build_right(self) -> None:
-        panel = ctk.CTkFrame(self.root, width=290, corner_radius=0)
-        panel.grid(row=0, column=2, sticky="ns")
-        panel.grid_propagate(False)
+        panel = ctk.CTkFrame(self.root, corner_radius=0)
+        panel.grid(row=0, column=2, sticky="nsew")
         pad = {"anchor": "w", "padx": 16}
 
         top = ctk.CTkFrame(panel, fg_color="transparent")
@@ -278,7 +284,10 @@ class ConsoleApp:
         self.lbl_timer.pack(**pad, pady=(2, 6))
         self.btn_rename = ctk.CTkButton(panel, text="✎ Rename session", width=150, height=28,
                                         command=self._rename_active, anchor="w")
-        self.btn_rename.pack(anchor="w", padx=16, pady=(0, 8))
+        self.btn_rename.pack(anchor="w", padx=16, pady=(0, 6))
+        self.btn_continue = ctk.CTkButton(panel, text="↻ Continue (inherit)", width=170, height=28,
+                                          command=self._continue_active, anchor="w")
+        self.btn_continue.pack(anchor="w", padx=16, pady=(0, 8))
         self.lbl_counts = ctk.CTkLabel(panel, text="replies 0 · tool calls 0", font=self.mono)
         self.lbl_counts.pack(**pad)
         self.lbl_tools = ctk.CTkLabel(panel, text="", text_color=MUTED, font=self.mono_s,
@@ -455,6 +464,63 @@ class ConsoleApp:
             self.manager.rename(self.manager.active, name)
             self.center_head.configure(text=f"{self.manager.active.title}  ·  {self.manager.active.category}")
             self._render_rail()
+
+    def _format_transcript(self, transcript: list[dict[str, Any]]) -> str:
+        lines = [
+            "A previous session already worked on this target. Here is its transcript — "
+            "continue from where it left off, do NOT redo work already done, and pick up the "
+            "most promising thread.\n"
+        ]
+        for ev in transcript:
+            kind = ev.get("type")
+            if kind == "agent":
+                lines.append(f"[agent] {ev.get('text', '')}")
+            elif kind == "tool_call":
+                lines.append(f"[tool {ev.get('name', '?')}] {ev.get('args', '')}")
+            elif kind == "tool_result":
+                out = ev.get("output", "")
+                if len(out) > 500:
+                    out = out[:500] + " …"
+                lines.append(f"[result] {out}")
+            elif kind == "guidance":
+                lines.append(f"[you] {ev.get('text', '')}")
+            elif kind == "status":
+                extra = ev.get("flag") or ev.get("error") or ""
+                lines.append(f"[status] {ev.get('status', '')} {extra}".strip())
+        return "\n".join(lines)
+
+    def _continue_active(self) -> None:
+        session = self.manager.active
+        if not session:
+            return
+        self._inherit = {
+            "context": self._format_transcript(session.transcript),
+            "spec": dict(session.spec),
+        }
+        self._show_setup()
+        self._prefill_setup(session.spec, session.title)
+        if session.folder and session.folder in self.manager.folders:
+            self.folder_menu.set(session.folder)
+
+    def _prefill_setup(self, spec: dict[str, Any], title: str) -> None:
+        if spec.get("kind") == "custom":
+            self.mode_btn.set("Custom URL")
+            self._mode_changed()
+            self.url_entry.delete(0, "end"); self.url_entry.insert(0, spec.get("url", ""))
+            self.desc_entry.delete(0, "end"); self.desc_entry.insert(0, spec.get("description", ""))
+            self.flag_entry.delete(0, "end"); self.flag_entry.insert(0, spec.get("flag_prefix", "flag"))
+        else:
+            self.mode_btn.set("Benchmark")
+            self._mode_changed()
+            cat = spec.get("category", "")
+            for c, box in self.dir_boxes.items():
+                box.select() if c == cat else box.deselect()
+            self._refresh_chal_options()
+            opt = f"{cat}/{spec.get('name', '')}"
+            if opt in self._chal_options:
+                self.chal_menu.set(opt)
+        self.turns_entry.delete(0, "end"); self.turns_entry.insert(0, str(spec.get("max_turns", 100)))
+        self.name_entry.delete(0, "end"); self.name_entry.insert(0, title)
 
     def _copy(self, text: str) -> None:
         self.root.clipboard_clear()
