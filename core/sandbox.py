@@ -63,7 +63,8 @@ def run_python(code: str, timeout: int = DEFAULT_TIMEOUT, workdir: Path | None =
     script.write_text(code)
     command = _wrap_no_network([sys.executable, "-I", str(script)])
     env = {
-        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+        # Include common homebrew paths so agent code can subprocess tools like php/objdump.
+        "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         "HOME": str(workdir),
         "TMPDIR": str(workdir),
         "LC_ALL": "C.UTF-8",
@@ -104,7 +105,7 @@ def run_command(argv: list[str], stdin: str = "", timeout: int = DEFAULT_TIMEOUT
     workdir = Path(tempfile.mkdtemp(prefix="ctf-sbx-"))
     command = _wrap_no_network([str(a) for a in argv])
     env = {
-        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+        "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         "HOME": str(workdir),
         "TMPDIR": str(workdir),
         "LC_ALL": "C.UTF-8",
