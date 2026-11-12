@@ -30,7 +30,7 @@ from .builder import list_challenges
 from .manager import Manager, Session
 
 ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("blue")
+ctk.set_default_color_theme("green")
 
 FG = "#d6dae3"
 MUTED = "#7f8a9b"
@@ -123,12 +123,14 @@ class ConsoleApp:
 
         self.bottom = ctk.CTkFrame(wrap, corner_radius=0, fg_color="#141822")
         self.bottom.grid(row=2, column=0, sticky="ew")
-        self.entry = ctk.CTkEntry(self.bottom, placeholder_text="give the agent a hint or correction…",
-                                  font=self.mono, height=38)
-        self.entry.pack(side="left", fill="x", expand=True, padx=(12, 8), pady=10)
-        self.entry.bind("<Return>", lambda _e: self._send())
-        ctk.CTkButton(self.bottom, text="Send guidance", command=self._send, width=130,
-                      height=38).pack(side="left", padx=(0, 12), pady=10)
+        self.suggestion_entry = ctk.CTkEntry(
+            self.bottom, placeholder_text="after it finishes: give a suggestion for the next attempt…",
+            font=self.mono, height=38)
+        self.suggestion_entry.pack(side="left", fill="x", expand=True, padx=(12, 8), pady=10)
+        self.suggestion_entry.bind("<Return>", lambda _e: self._continue_with_suggestion())
+        ctk.CTkButton(self.bottom, text="Continue with suggestion",
+                      command=self._continue_with_suggestion, width=190, height=38).pack(
+            side="left", padx=(0, 12), pady=10)
 
         self._show_setup()
 
@@ -291,29 +293,22 @@ class ConsoleApp:
         self.btn_stop.pack(side="right")
         self.lbl_timer = ctk.CTkLabel(panel, text="⏱ 0s", text_color=MUTED, font=self.mono)
         self.lbl_timer.pack(**pad, pady=(2, 6))
-        self.btn_rename = ctk.CTkButton(panel, text="✎ Rename session", width=150, height=28,
-                                        command=self._rename_active, anchor="w")
-        self.btn_rename.pack(anchor="w", padx=16, pady=(0, 6))
-        self.btn_continue = ctk.CTkButton(panel, text="↻ Continue (inherit)", width=170, height=28,
-                                          command=self._continue_active, anchor="w")
-        self.btn_continue.pack(anchor="w", padx=16, pady=(0, 6))
-        self.btn_rerun = ctk.CTkButton(panel, text="↻ Re-run (fresh)", width=170, height=28,
-                                       command=self._rerun_active, anchor="w")
-        self.btn_rerun.pack(anchor="w", padx=16, pady=(0, 8))
         self.lbl_counts = ctk.CTkLabel(panel, text="replies 0 · tool calls 0", font=self.mono)
         self.lbl_counts.pack(**pad)
         self.lbl_tools = ctk.CTkLabel(panel, text="", text_color=MUTED, font=self.mono_s,
                                       justify="left", wraplength=250)
-        self.lbl_tools.pack(**pad, pady=(2, 14))
+        self.lbl_tools.pack(**pad, pady=(2, 12))
 
-        self._header(panel, "FINDINGS", lambda: self._copy(self._findings_text()))
-        self.txt_findings = ctk.CTkTextbox(panel, height=110, font=self.mono_s, wrap="word")
-        self.txt_findings.pack(fill="x", padx=16, pady=(4, 14))
+        # Findings / Thinking as tabs, so each gets the full height.
+        self.tabs = ctk.CTkTabview(panel, corner_radius=10)
+        self.tabs.pack(fill="both", expand=True, padx=16, pady=(0, 12))
+        self.tab_findings = self.tabs.add("Findings")
+        self.tab_think = self.tabs.add("Thinking")
+        self.txt_findings = ctk.CTkTextbox(self.tab_findings, font=self.mono_s, wrap="word")
+        self.txt_findings.pack(fill="both", expand=True)
         self._wheel_scroll(self.txt_findings)
-
-        self._header(panel, "CURRENT THINKING", lambda: self._copy(self._thinking_text()))
-        self.txt_think = ctk.CTkTextbox(panel, height=180, font=self.mono_s, wrap="word")
-        self.txt_think.pack(fill="both", expand=True, padx=16, pady=(4, 14))
+        self.txt_think = ctk.CTkTextbox(self.tab_think, font=self.mono_s, wrap="word")
+        self.txt_think.pack(fill="both", expand=True)
         self._wheel_scroll(self.txt_think)
 
         flag_row = ctk.CTkFrame(panel, fg_color="transparent")
@@ -388,7 +383,26 @@ class ConsoleApp:
                             fg_color="transparent", hover_color=RAIL_SEL, height=36,
                             command=lambda s=session: self.select(s))
         btn.pack(fill="x", pady=2, padx=(24 if indent else 8, 4))
+        btn.bind("<Button-3>", lambda e, s=session: self._session_menu(e, s))
         self._rows[session.id] = btn
+
+    def _session_menu(self, event: Any, session: Session) -> None:
+        menu = tk.Menu(self.root, tearoff=0, bg="#141822", fg=FG,
+                       activebackground=RAIL_SEL, activeforeground=FG)
+        menu.add_command(label="Continue (inherit)",
+                         command=lambda: self._select_then(session, self._continue_active))
+        menu.add_command(label="Re-run (fresh)",
+                         command=lambda: self._select_then(session, self._rerun_active))
+        menu.add_command(label="Rename…",
+                         command=lambda: self._select_then(session, self._rename_active))
+        if session.is_running():
+            menu.add_command(label="■ Stop",
+                             command=lambda: self._select_then(session, self._stop_active))
+        menu.tk_popup(event.x_root, event.y_root)
+
+    def _select_then(self, session: Session, fn) -> None:
+        self.select(session)
+        fn()
 
     def add_session(self, session: Session) -> None:
         self._render_rail()
@@ -399,7 +413,7 @@ class ConsoleApp:
         self.manager.active = session
         self.setup.grid_remove()
         self.chat.grid()
-        self.bottom.grid()
+        self.bottom.grid() if session.state["done"] else self.bottom.grid_remove()
         for sid, btn in self._rows.items():
             btn.configure(fg_color=RAIL_SEL if sid == session.id else "transparent")
         self.center_head.configure(text=f"{session.title}  ·  {session.category}", text_color=FG)
@@ -453,12 +467,20 @@ class ConsoleApp:
                              text_color=STATUS_COLORS.get(status, FG), font=self.mono, full=True)
 
     # --- behavior ----------------------------------------------------------
-    def _send(self) -> None:
-        text = self.entry.get().strip()
-        if text and self.manager.active:
-            self.manager.active.send_guidance(text)
-            self._bubble("e", GUIDE_BG, f"you ▸ {text}  (queued)", text_color=GUIDE_FG)
-            self.entry.delete(0, "end")
+    def _continue_with_suggestion(self) -> None:
+        session = self.manager.active
+        suggestion = self.suggestion_entry.get().strip()
+        if not session or not suggestion:
+            return
+        context = self._format_transcript(session.transcript)
+        context += f"\n\nYour suggestion for the next attempt: {suggestion}"
+        spec = dict(session.spec)
+        spec["context"] = context
+        spec["max_turns"] = session.spec.get("max_turns", 100)
+        new_session = self.manager.new_session(spec, session.title, session.category,
+                                               folder=session.folder)
+        self.add_session(new_session)
+        self.suggestion_entry.delete(0, "end")
 
     def _stop_active(self) -> None:
         if self.manager.active and self.manager.active.is_running():
@@ -593,6 +615,7 @@ class ConsoleApp:
         self.lbl_flag.configure(text=st["flag"] or "—")
         # stop button only meaningful while running
         self.btn_stop.configure(state="normal" if active.is_running() else "disabled")
+        self.bottom.grid() if active.state["done"] else self.bottom.grid_remove()
 
     def _animate(self) -> None:
         self.frame += 1
