@@ -182,6 +182,10 @@ class ConsoleApp:
         self.folder_menu = ctk.CTkOptionMenu(opt_row, values=["(none)"], width=260,
                                              command=lambda _v: None)
         self.folder_menu.pack(anchor="w", pady=(4, 0))
+        ctk.CTkLabel(opt_row, text="max turns", text_color=MUTED, font=hf).pack(anchor="w", pady=(8, 0))
+        self.turns_entry = ctk.CTkEntry(opt_row, width=120, font=self.mono)
+        self.turns_entry.insert(0, "100")
+        self.turns_entry.pack(anchor="w", pady=(4, 0))
 
         self.setup_hint = ctk.CTkLabel(card, text="", text_color="#ff6b6b", font=self.mono_s)
         self.setup_hint.pack(anchor="w", padx=26, pady=(10, 0))
@@ -248,6 +252,10 @@ class ConsoleApp:
             title = custom_name
         folder = self.folder_menu.get()
         folder = None if folder == "(none)" else folder
+        try:
+            spec["max_turns"] = max(1, int(self.turns_entry.get().strip() or "100"))
+        except ValueError:
+            spec["max_turns"] = 100
         self.setup_hint.configure(text="")
         self.setup.grid_remove()
         self.add_session(self.manager.new_session(spec, title, category, folder=folder))
@@ -280,10 +288,12 @@ class ConsoleApp:
         self._header(panel, "FINDINGS", lambda: self._copy(self._findings_text()))
         self.txt_findings = ctk.CTkTextbox(panel, height=110, font=self.mono_s, wrap="word")
         self.txt_findings.pack(fill="x", padx=16, pady=(4, 14))
+        self._wheel_scroll(self.txt_findings)
 
         self._header(panel, "CURRENT THINKING", lambda: self._copy(self._thinking_text()))
         self.txt_think = ctk.CTkTextbox(panel, height=180, font=self.mono_s, wrap="word")
         self.txt_think.pack(fill="both", expand=True, padx=16, pady=(4, 14))
+        self._wheel_scroll(self.txt_think)
 
         flag_row = ctk.CTkFrame(panel, fg_color="transparent")
         flag_row.pack(fill="x", padx=16, pady=(4, 16))
@@ -308,6 +318,25 @@ class ConsoleApp:
     def _copy_btn(self, parent: ctk.CTkFrame, cmd) -> None:
         ctk.CTkButton(parent, text="⧉", width=28, height=24, fg_color="#232b3a",
                       hover_color="#35445a", font=self.mono_s, command=cmd).pack(side="right")
+
+    def _wheel_scroll(self, box: ctk.CTkTextbox) -> None:
+        """customtkinter's scrollbar only binds Linux Button-4/5, not the macOS/Windows
+        <MouseWheel>, so bind the wheel here to scroll the textbox."""
+        text = box._textbox
+
+        def handler(event: Any) -> str:
+            delta = getattr(event, "delta", 0)
+            if delta:
+                text.yview_scroll(-1 if delta > 0 else 1, "units")
+            elif getattr(event, "num", 0) == 4:
+                text.yview_scroll(-1, "units")
+            elif getattr(event, "num", 0) == 5:
+                text.yview_scroll(1, "units")
+            return "break"
+
+        box.bind("<MouseWheel>", handler)
+        box.bind("<Button-4>", handler)
+        box.bind("<Button-5>", handler)
 
     # --- sessions / folders ------------------------------------------------
     def _new_folder(self) -> None:
