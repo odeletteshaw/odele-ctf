@@ -227,6 +227,16 @@ class Manager:
         session.stop()
         self.save()
 
+    def delete(self, session: Session) -> None:
+        """Remove a session and its subprocess; stops it first if still running."""
+        if session.is_running():
+            session.stop()
+        if session in self.sessions:
+            self.sessions.remove(session)
+        if self.active is session:
+            self.active = None
+        self.save()
+
     def drain_all(self) -> None:
         for session in self.sessions:
             was_done = session.state["done"]

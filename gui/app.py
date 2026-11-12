@@ -12,6 +12,7 @@ Only rendering lives here; all agent logic is in the Session subprocess.
 
 import random
 import tkinter as tk
+import tkinter.messagebox as messagebox
 import tkinter.simpledialog as simpledialog
 from urllib.parse import urlparse
 
@@ -235,6 +236,8 @@ class ConsoleApp:
         self.manager.active = None
         for btn in self._rows.values():
             btn.configure(fg_color="transparent")
+        if hasattr(self, "btn_delete"):
+            self.btn_delete.configure(state="disabled")
         self.center_head.configure(text="New session")
         self.chat.grid_remove()
         self.bottom.grid_remove()
@@ -314,6 +317,10 @@ class ConsoleApp:
                                       fg_color="#5a2b2b", hover_color="#703636",
                                       command=self._stop_active)
         self.btn_stop.pack(side="right")
+        self.btn_delete = ctk.CTkButton(top, text="🗑", width=40, height=30,
+                                        fg_color="#5a2b2b", hover_color="#703636",
+                                        state="disabled", command=self._delete_active)
+        self.btn_delete.pack(side="right", padx=(0, 4))
         self.lbl_timer = ctk.CTkLabel(panel, text="⏱ 0s", text_color=MUTED, font=self.mono)
         self.lbl_timer.pack(**pad, pady=(2, 6))
         self.lbl_counts = ctk.CTkLabel(panel, text="replies 0 · tool calls 0", font=self.mono)
@@ -447,6 +454,9 @@ class ConsoleApp:
         if session.is_running():
             menu.add_command(label="■ Stop",
                              command=lambda: self._select_then(session, self._stop_active))
+        menu.add_separator()
+        menu.add_command(label="🗑 Delete",
+                         command=lambda: self._select_then(session, self._delete_active))
         menu.tk_popup(event.x_root, event.y_root)
 
     def _select_then(self, session: Session, fn) -> None:
@@ -554,6 +564,24 @@ class ConsoleApp:
             self._bubble("center", "#11151c", "— CANCELLED —", text_color=STATUS_COLORS["cancelled"],
                          font=self.mono, full=True)
             self._refresh_panel()
+
+    def _delete_active(self) -> None:
+        session = self.manager.active
+        if not session:
+            return
+        if not messagebox.askyesno(
+            "Delete session",
+            f"Delete “{session.title}”? This removes it from the list and from disk.",
+            parent=self.root,
+        ):
+            return
+        self.manager.delete(session)
+        self._rendered.pop(session.id, None)
+        self._render_rail()
+        if self.manager.sessions:
+            self.select(self.manager.sessions[0])
+        else:
+            self._show_setup()
 
     def _rename_active(self) -> None:
         if not self.manager.active:
@@ -695,6 +723,7 @@ class ConsoleApp:
         self.lbl_flag.configure(text=st["flag"] or "—")
         # stop button only meaningful while running
         self.btn_stop.configure(state="normal" if active.is_running() else "disabled")
+        self.btn_delete.configure(state="normal")
         self.bottom.grid() if active.state["done"] else self.bottom.grid_remove()
 
     def _animate(self) -> None:
