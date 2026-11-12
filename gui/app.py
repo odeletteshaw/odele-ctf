@@ -10,7 +10,6 @@
 Only rendering lives here; all agent logic is in the Session subprocess.
 """
 
-import random
 import signal
 import tkinter as tk
 import tkinter.filedialog as filedialog
@@ -27,9 +26,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.catalog import CATEGORIES  # noqa: E402
-
-from .builder import list_challenges
 from .manager import Manager, Session
 
 ctk.set_appearance_mode("dark")
@@ -164,68 +160,12 @@ class ConsoleApp:
         hf = ctk.CTkFont(family="Menlo", size=11, weight="bold")
         ctk.CTkLabel(card, text="Start a new session", font=self.bold).pack(
             anchor="w", padx=26, pady=(22, 2))
-        ctk.CTkLabel(card, text="Pick the direction(s). The specific challenge can stay unknown.",
+        ctk.CTkLabel(card, text="A real external target: one or more URLs plus any attached files.",
                      text_color=MUTED, font=self.mono_s).pack(anchor="w", padx=26, pady=(0, 14))
 
-        ctk.CTkLabel(card, text="DIRECTION   (multi-select)", text_color=MUTED, font=hf).pack(
-            anchor="w", padx=26)
-        drow = ctk.CTkFrame(card, fg_color="transparent")
-        drow.pack(anchor="w", padx=22, pady=(8, 14))
-        self.dir_boxes: dict[str, ctk.CTkCheckBox] = {}
-        for cat, meta in CATEGORIES.items():
-            ready = meta["status"] == "ready"
-            label = cat if ready else f"{cat} (soon)"
-            box = ctk.CTkCheckBox(drow, text=label, command=self._refresh_chal_options, width=108)
-            if not ready:
-                box.configure(state="disabled")
-            box.pack(side="left", padx=6, pady=3)
-            self.dir_boxes[cat] = box
-        self.dir_boxes["web"].select()
-
-        ctk.CTkLabel(card, text="TARGET", text_color=MUTED, font=hf).pack(anchor="w", padx=26)
-        self.mode_btn = ctk.CTkSegmentedButton(card, values=["Benchmark", "Custom URL"],
-                                               command=lambda _v: self._mode_changed())
-        self.mode_btn.set("Benchmark")
-        self.mode_btn.pack(anchor="w", padx=26, pady=(8, 10))
-
-        self.panel_area = ctk.CTkFrame(card, fg_color="transparent")
-        self.panel_area.pack(anchor="w", padx=26, fill="x")
-        self.bench_panel = ctk.CTkFrame(self.panel_area, fg_color="transparent")
-        ctk.CTkLabel(self.bench_panel, text="challenge  ·  random = let the agent discover it",
-                     text_color=MUTED, font=self.mono_s).pack(anchor="w")
-        self.chal_menu = ctk.CTkOptionMenu(self.bench_panel, values=["🎲  random (unknown)"], width=380)
-        self.chal_menu.pack(anchor="w", pady=(6, 0))
-        self.custom_panel = ctk.CTkFrame(self.panel_area, fg_color="transparent")
-
-        ctk.CTkLabel(self.custom_panel, text="TARGET URLs", text_color=MUTED,
-                     font=self.mono_s).pack(anchor="w", pady=(0, 2))
-        self.urls_box = ctk.CTkFrame(self.custom_panel, fg_color="transparent", height=0)
-        self.urls_box.pack(anchor="w", fill="x")
-        self.url_entries: list[ctk.CTkEntry] = []
-        self._add_url_row("")
-        ctk.CTkButton(self.custom_panel, text="＋ Add URL", width=110, height=26,
-                      command=lambda: self._add_url_row("")).pack(anchor="w", pady=(2, 8))
-
-        ctk.CTkLabel(self.custom_panel, text="ATTACHMENTS", text_color=MUTED,
-                     font=self.mono_s).pack(anchor="w", pady=(0, 2))
-        self.attach_box = ctk.CTkFrame(self.custom_panel, fg_color="transparent", height=0)
-        self.attach_box.pack(anchor="w", fill="x")
-        self._attachment_paths: list[str] = []
-        ctk.CTkButton(self.custom_panel, text="＋ Add file", width=110, height=26,
-                      command=self._add_attachment).pack(anchor="w", pady=(2, 8))
-
-        self.desc_entry = ctk.CTkEntry(self.custom_panel, placeholder_text="description / hint (optional)",
-                                       width=440, font=self.mono)
-        self.desc_entry.pack(anchor="w", pady=4)
-        self.flag_entry = ctk.CTkEntry(self.custom_panel,
-                                       placeholder_text="flag prefix (optional, default 'flag')",
-                                       width=280, font=self.mono)
-        self.flag_entry.pack(anchor="w", pady=4)
-        self.bench_panel.pack(anchor="w")
-
-        # --- name + folder (new) ------------------------------------------
+        # --- name / folder / max turns at the top --------------------------
         opt_row = ctk.CTkFrame(card, fg_color="transparent")
-        opt_row.pack(anchor="w", padx=26, pady=(14, 0))
+        opt_row.pack(anchor="w", padx=26)
         ctk.CTkLabel(opt_row, text="name", text_color=MUTED, font=hf).pack(anchor="w")
         self.name_entry = ctk.CTkEntry(opt_row, placeholder_text="(auto from target)",
                                        width=260, font=self.mono)
@@ -239,16 +179,37 @@ class ConsoleApp:
         self.turns_entry.insert(0, "100")
         self.turns_entry.pack(anchor="w", pady=(4, 0))
 
+        # --- description / flag prefix ------------------------------------
+        self.desc_entry = ctk.CTkEntry(card, placeholder_text="description / hint (optional)",
+                                       width=440, font=self.mono)
+        self.desc_entry.pack(anchor="w", padx=26, pady=(14, 4))
+        self.flag_entry = ctk.CTkEntry(card, placeholder_text="flag prefix (optional, default 'flag')",
+                                       width=280, font=self.mono)
+        self.flag_entry.pack(anchor="w", padx=26, pady=4)
+
+        # --- target URLs + attachments at the bottom ----------------------
+        ctk.CTkLabel(card, text="TARGET URLs", text_color=MUTED, font=hf).pack(
+            anchor="w", padx=26, pady=(10, 2))
+        self.urls_box = ctk.CTkFrame(card, fg_color="transparent", height=0)
+        self.urls_box.pack(anchor="w", padx=26, fill="x")
+        self.url_entries: list[ctk.CTkEntry] = []
+        self._add_url_row("")
+        ctk.CTkButton(card, text="＋ Add URL", width=110, height=26,
+                      command=lambda: self._add_url_row("")).pack(anchor="w", padx=26, pady=(2, 8))
+
+        ctk.CTkLabel(card, text="ATTACHMENTS", text_color=MUTED, font=hf).pack(
+            anchor="w", padx=26, pady=(0, 2))
+        self.attach_box = ctk.CTkFrame(card, fg_color="transparent", height=0)
+        self.attach_box.pack(anchor="w", padx=26, fill="x")
+        self._attachment_paths: list[str] = []
+        ctk.CTkButton(card, text="＋ Add file", width=110, height=26,
+                      command=self._add_attachment).pack(anchor="w", padx=26, pady=(2, 8))
+
         self.setup_hint = ctk.CTkLabel(card, text="", text_color="#ff6b6b", font=self.mono_s)
         self.setup_hint.pack(anchor="w", padx=26, pady=(10, 0))
         ctk.CTkButton(card, text="Start  ▶", command=self._start_from_setup,
                       height=42, width=150).pack(anchor="w", padx=26, pady=(8, 22))
         return wrap
-
-    def _mode_changed(self) -> None:
-        custom = self.mode_btn.get() == "Custom URL"
-        (self.bench_panel if custom else self.custom_panel).pack_forget()
-        (self.custom_panel if custom else self.bench_panel).pack(anchor="w")
 
     def _add_url_row(self, value: str = "") -> None:
         row = ctk.CTkFrame(self.urls_box, fg_color="transparent")
@@ -297,18 +258,6 @@ class ConsoleApp:
                           command=lambda path=p: self._remove_attachment(path)).pack(
                 side="left", padx=(4, 0))
 
-    def _selected_dirs(self) -> list[str]:
-        return [cat for cat, box in self.dir_boxes.items() if box.get()]
-
-    def _refresh_chal_options(self) -> None:
-        options = ["🎲  random (unknown)"]
-        for cat in self._selected_dirs():
-            options += [f"{cat}/{name}" for name in list_challenges(cat)]
-        self._chal_options = options
-        self.chal_menu.configure(values=options)
-        if self.chal_menu.get() not in options:
-            self.chal_menu.set(options[0])
-
     def _refresh_folder_options(self) -> None:
         self.folder_menu.configure(values=["(none)"] + self.manager.folders)
         if self.folder_menu.get() not in ["(none)"] + self.manager.folders:
@@ -325,58 +274,38 @@ class ConsoleApp:
         self.bottom.grid_remove()
         self.setup.grid()
         self._reset_setup()
-        self._refresh_chal_options()
         self._refresh_folder_options()
 
     def _reset_setup(self) -> None:
         """Clear every setup field back to defaults so a fresh '＋ Session' starts blank."""
-        for cat, box in self.dir_boxes.items():
-            box.deselect()
-        if "web" in self.dir_boxes:
-            self.dir_boxes["web"].select()
-        self.mode_btn.set("Benchmark")
-        self._mode_changed()
+        self.name_entry.delete(0, "end")
+        self.turns_entry.delete(0, "end")
+        self.turns_entry.insert(0, "100")
+        self.folder_menu.set("(none)")
+        self.desc_entry.delete(0, "end")
+        self.flag_entry.delete(0, "end")
         for child in self.urls_box.winfo_children():
             child.destroy()
         self.url_entries.clear()
         self._add_url_row("")
         self._attachment_paths.clear()
         self._render_attachments()
-        self.desc_entry.delete(0, "end")
-        self.flag_entry.delete(0, "end")
-        self.name_entry.delete(0, "end")
-        self.turns_entry.delete(0, "end")
-        self.turns_entry.insert(0, "100")
-        self.folder_menu.set("(none)")
         self.setup_hint.configure(text="")
 
     def _start_from_setup(self) -> None:
-        if self.mode_btn.get() == "Custom URL":
-            urls = self._collect_urls()
-            if not urls:
-                self.setup_hint.configure(text="enter at least one target URL (http:// or https://)")
+        urls = self._collect_urls()
+        if not urls:
+            self.setup_hint.configure(text="enter at least one target URL (http:// or https://)")
+            return
+        for u in urls:
+            if not (u.startswith("http://") or u.startswith("https://")):
+                self.setup_hint.configure(text="target URLs must start with http:// or https://")
                 return
-            for u in urls:
-                if not (u.startswith("http://") or u.startswith("https://")):
-                    self.setup_hint.configure(text="target URLs must start with http:// or https://")
-                    return
-            spec = {"kind": "custom", "urls": urls, "description": self.desc_entry.get().strip(),
-                    "flag_prefix": self.flag_entry.get().strip() or "flag",
-                    "attachments": list(self._attachment_paths)}
-            title = urlparse(urls[0]).netloc or urls[0][:28]
-            category = "custom"
-        else:
-            dirs = self._selected_dirs()
-            if not dirs:
-                self.setup_hint.configure(text="pick at least one direction")
-                return
-            choice = self.chal_menu.get()
-            if choice.startswith("🎲"):
-                category, name = random.choice([(c, n) for c in dirs for n in list_challenges(c)])
-            else:
-                category, name = choice.split("/", 1)
-            spec = {"kind": "benchmark", "category": category, "name": name}
-            title = name
+        spec = {"kind": "custom", "urls": urls, "description": self.desc_entry.get().strip(),
+                "flag_prefix": self.flag_entry.get().strip() or "flag",
+                "attachments": list(self._attachment_paths)}
+        title = urlparse(urls[0]).netloc or urls[0][:28]
+        category = "custom"
         custom_name = self.name_entry.get().strip()
         if custom_name:
             title = custom_name
@@ -756,31 +685,19 @@ class ConsoleApp:
             self.folder_menu.set(session.folder)
 
     def _prefill_setup(self, spec: dict[str, Any], title: str) -> None:
-        if spec.get("kind") == "custom":
-            self.mode_btn.set("Custom URL")
-            self._mode_changed()
-            urls = spec.get("urls") or ([spec.get("url")] if spec.get("url") else [])
-            for child in self.urls_box.winfo_children():
-                child.destroy()
-            self.url_entries.clear()
-            for u in urls:
-                self._add_url_row(u)
-            if not urls:
-                self._add_url_row("")
-            self._attachment_paths = list(spec.get("attachments") or [])
-            self._render_attachments()
-            self.desc_entry.delete(0, "end"); self.desc_entry.insert(0, spec.get("description", ""))
-            self.flag_entry.delete(0, "end"); self.flag_entry.insert(0, spec.get("flag_prefix", "flag"))
-        else:
-            self.mode_btn.set("Benchmark")
-            self._mode_changed()
-            cat = spec.get("category", "")
-            for c, box in self.dir_boxes.items():
-                box.select() if c == cat else box.deselect()
-            self._refresh_chal_options()
-            opt = f"{cat}/{spec.get('name', '')}"
-            if opt in self._chal_options:
-                self.chal_menu.set(opt)
+        # Only custom targets are launched from the GUI now.
+        urls = spec.get("urls") or ([spec.get("url")] if spec.get("url") else [])
+        for child in self.urls_box.winfo_children():
+            child.destroy()
+        self.url_entries.clear()
+        for u in urls:
+            self._add_url_row(u)
+        if not urls:
+            self._add_url_row("")
+        self._attachment_paths = list(spec.get("attachments") or [])
+        self._render_attachments()
+        self.desc_entry.delete(0, "end"); self.desc_entry.insert(0, spec.get("description", ""))
+        self.flag_entry.delete(0, "end"); self.flag_entry.insert(0, spec.get("flag_prefix", "flag"))
         self.turns_entry.delete(0, "end"); self.turns_entry.insert(0, str(spec.get("max_turns", 100)))
         self.name_entry.delete(0, "end"); self.name_entry.insert(0, title)
 
