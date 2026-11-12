@@ -708,8 +708,11 @@ class ConsoleApp:
 
     def _copy_flag(self, _event=None) -> None:
         w = self.root.focus_get()
-        if isinstance(w, (ctk.CTkTextbox, ctk.CTkEntry)):
-            return  # textbox/entry handles its own copy
+        # customtkinter wraps its text/entry in an inner tkinter.Text/tkinter.Entry, so
+        # focus_get() returns that inner widget — match it too, and leave copy to the
+        # focused widget instead of clobbering the user's selection with the flag.
+        if isinstance(w, (ctk.CTkTextbox, ctk.CTkEntry, tk.Text, tk.Entry)):
+            return
         if self.manager.active and self.manager.active.state.get("flag"):
             self._copy(self.manager.active.state["flag"])
 
