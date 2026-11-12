@@ -84,6 +84,7 @@ def run_loop(
     tool_calls = 0
     repeat_counts: dict[tuple[str, str], int] = {}
     nudged_repeats: set[tuple[str, str]] = set()
+    agent_text_counts: dict[str, int] = {}
     for _ in range(max_turns):
         # Fold in any supervisor guidance before the model's next turn.
         if guidance and (note := guidance()):
@@ -94,8 +95,10 @@ def run_loop(
         message = chat(messages, schemas)
         assistant: dict[str, Any] = {"role": "assistant", "content": message.content or ""}
         if message.content:
-            print(f"[agent] {message.content}", flush=True)
             final_text = message.content
+            norm_text = " ".join(message.content.split())
+            agent_text_counts[norm_text] = agent_text_counts.get(norm_text, 0) + 1
+            print(f"[agent] {message.content}", flush=True)
             emit({"type": "agent", "text": message.content})
         if not message.tool_calls:
             messages.append(assistant)
@@ -108,6 +111,13 @@ def run_loop(
             # off (so the model may legitimately answer "couldn't solve"). In persist mode,
             # text without a flag is treated as a premature stop and nudged to continue.
             if has_flag or (text.strip() and not persist):
+                break
+            norm_text = " ".join(text.split())
+            if agent_text_counts.get(norm_text, 0) >= 3:
+                # The model is stuck repeating the same message without calling a tool —
+                # stop instead of burning every remaining turn on an identical reply.
+                print("[loop] repeated output, stopping", flush=True)
+                emit({"type": "guidance", "text": "(auto) stopped — repeated output without progress"})
                 break
             nudge = (
                 "You stopped without giving the flag. First review your earlier findings for "
@@ -171,7 +181,8 @@ def run_loop(
 def _openai_chat_fn(client: OpenAI, model: str) -> ChatFn:
     def chat(messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> Any:
         response = client.chat.completions.create(
-            model=model, messages=messages, tools=tools, tool_choice="auto", temperature=0
+            model=model, messages=messages, tools=tools, tool_choice="auto", temperature=0,
+            timeout=config.API_TIMEOUT,
         )
         return response.choices[0].message
 

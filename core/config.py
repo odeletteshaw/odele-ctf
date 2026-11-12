@@ -31,3 +31,5 @@ _load_dotenv(ROOT / ".env")
 API_BASE = os.environ.get("CTF_API_BASE", "https://api.deepseek.com")
 API_KEY = os.environ.get("CTF_API_KEY") or os.environ.get("DEEPSEEK_API_KEY")
 DEFAULT_MODEL = os.environ.get("CTF_MODEL", "deepseek-chat")
+# Per-request timeout (seconds) so a hung API call errors out instead of freezing a session.
+API_TIMEOUT = float(os.environ.get("CTF_API_TIMEOUT", "300"))

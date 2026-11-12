@@ -227,6 +227,13 @@ class Manager:
         session.stop()
         self.save()
 
+    def stop_all(self) -> None:
+        """Stop every running session (used on shutdown to avoid orphaned workers)."""
+        for session in self.sessions:
+            if session.is_running():
+                session.stop()
+        self.save()
+
     def delete(self, session: Session) -> None:
         """Remove a session and its subprocess; stops it first if still running."""
         if session.is_running():

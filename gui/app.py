@@ -11,6 +11,7 @@ Only rendering lives here; all agent logic is in the Session subprocess.
 """
 
 import random
+import signal
 import tkinter as tk
 import tkinter.messagebox as messagebox
 import tkinter.simpledialog as simpledialog
@@ -77,6 +78,24 @@ class ConsoleApp:
         self.root.bind("<Control-c>", self._copy_flag)
         self.root.after(poll_ms, self._poll)
         self.root.after(90, self._animate)
+        self._install_signal_handlers()
+
+    def _install_signal_handlers(self) -> None:
+        """Terminate worker subprocesses on SIGINT/SIGTERM so a hard kill doesn't leak
+        orphaned workers that keep burning API calls."""
+        def _shutdown(signum: int, frame: Any) -> None:
+            try:
+                self.manager.stop_all()
+            finally:
+                try:
+                    self.root.destroy()
+                except Exception:
+                    pass
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                signal.signal(sig, _shutdown)
+            except (ValueError, OSError):
+                pass  # not the main thread, or unsupported
 
     # --- layout ------------------------------------------------------------
     def _build(self) -> None:
