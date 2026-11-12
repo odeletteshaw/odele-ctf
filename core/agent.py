@@ -15,6 +15,8 @@ from openai import OpenAI
 from . import config
 
 FLAG_PATTERN = re.compile(r"flag\{[^}\s]+\}")
+# Fallback for targets whose flag uses a different keyword (ctf{...}, answer{...}, ...).
+GENERAL_FLAG_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_]*\{[^}\s]+\}")
 
 
 @dataclass
@@ -80,6 +82,8 @@ def run_loop(
     ]
     final_text = ""
     tool_calls = 0
+    repeat_counts: dict[tuple[str, str], int] = {}
+    nudged_repeats: set[tuple[str, str]] = set()
     for _ in range(max_turns):
         # Fold in any supervisor guidance before the model's next turn.
         if guidance and (note := guidance()):
@@ -97,15 +101,18 @@ def run_loop(
             messages.append(assistant)
             pattern = flag_pattern or FLAG_PATTERN
             text = message.content or ""
-            has_flag = bool(text.strip()) and bool(pattern.search(text))
+            has_flag = bool(text.strip()) and bool(
+                pattern.search(text) or GENERAL_FLAG_PATTERN.search(text)
+            )
             # A text conclusion ends the loop when it has the flag, or when persistence is
             # off (so the model may legitimately answer "couldn't solve"). In persist mode,
             # text without a flag is treated as a premature stop and nudged to continue.
             if has_flag or (text.strip() and not persist):
                 break
             nudge = (
-                "You stopped without giving the flag. Keep going — call a tool for the "
-                "next step, or finish by printing the flag. The challenge is not solved yet."
+                "You stopped without giving the flag. First review your earlier findings for "
+                "anything you may have missed, then try a DIFFERENT approach — do not repeat a "
+                "technique that already failed. The challenge is not solved yet."
             )
             messages.append({"role": "user", "content": nudge})
             print("[nudge] keep going", flush=True)
@@ -120,10 +127,19 @@ def run_loop(
             for call in message.tool_calls
         ]
         messages.append(assistant)
+        seen_this_turn: list[tuple[str, str]] = []
         for call in message.tool_calls:
             tool_calls += 1
+            raw_args = call.function.arguments or ""
             try:
-                args = json.loads(call.function.arguments or "{}")
+                canon = json.dumps(json.loads(raw_args or "{}"), sort_keys=True)
+            except (json.JSONDecodeError, TypeError):
+                canon = raw_args
+            key = (call.function.name, canon)
+            repeat_counts[key] = repeat_counts.get(key, 0) + 1
+            seen_this_turn.append(key)
+            try:
+                args = json.loads(raw_args or "{}")
             except json.JSONDecodeError as error:
                 output = f"Error: arguments were not valid JSON: {error}"
             else:
@@ -133,6 +149,22 @@ def run_loop(
                 output = handler(args) if handler else f"Error: unknown tool {call.function.name}"
             emit({"type": "tool_result", "name": call.function.name, "output": output})
             messages.append({"role": "tool", "tool_call_id": call.id, "content": output})
+        # Break tool-call loops: if the model repeats an exact call it already made, inject a
+        # supervisor note telling it to review its earlier findings and change tack instead of
+        # burning the turn budget on the same doomed attempt.
+        for key in seen_this_turn:
+            if repeat_counts[key] >= 2 and key not in nudged_repeats:
+                nudged_repeats.add(key)
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "You are repeating the exact same tool call you already made. Stop and "
+                        "review your earlier findings for anything you missed, then try a "
+                        "DIFFERENT approach — do not repeat a technique that already failed."
+                    ),
+                })
+                print("[nudge] repeated call — try something different", flush=True)
+                emit({"type": "guidance", "text": "(auto) repeated call — try something different"})
     return final_text, tool_calls
 
 
@@ -166,4 +198,6 @@ def solve(
         on_event=on_event, guidance=guidance, flag_pattern=flag_pattern, persist=persist,
     )
     flags = (flag_pattern or FLAG_PATTERN).findall(final_text)
+    if not flags:
+        flags = GENERAL_FLAG_PATTERN.findall(final_text)
     return SolveResult(flags[-1] if flags else None, final_text, tool_calls)

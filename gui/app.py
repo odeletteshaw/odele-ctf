@@ -239,8 +239,26 @@ class ConsoleApp:
         self.chat.grid_remove()
         self.bottom.grid_remove()
         self.setup.grid()
+        self._reset_setup()
         self._refresh_chal_options()
         self._refresh_folder_options()
+
+    def _reset_setup(self) -> None:
+        """Clear every setup field back to defaults so a fresh '＋ Session' starts blank."""
+        for cat, box in self.dir_boxes.items():
+            box.deselect()
+        if "web" in self.dir_boxes:
+            self.dir_boxes["web"].select()
+        self.mode_btn.set("Benchmark")
+        self._mode_changed()
+        self.url_entry.delete(0, "end")
+        self.desc_entry.delete(0, "end")
+        self.flag_entry.delete(0, "end")
+        self.name_entry.delete(0, "end")
+        self.turns_entry.delete(0, "end")
+        self.turns_entry.insert(0, "100")
+        self.folder_menu.set("(none)")
+        self.setup_hint.configure(text="")
 
     def _start_from_setup(self) -> None:
         if self.mode_btn.get() == "Custom URL":
@@ -273,12 +291,15 @@ class ConsoleApp:
             spec["max_turns"] = max(1, int(self.turns_entry.get().strip() or "100"))
         except ValueError:
             spec["max_turns"] = 100
+        inherit = None
         if self._inherit:
             spec["context"] = self._inherit["context"]
+            inherit = self._inherit.get("source")
             self._inherit = None
         self.setup_hint.configure(text="")
         self.setup.grid_remove()
-        self.add_session(self.manager.new_session(spec, title, category, folder=folder))
+        self.add_session(self.manager.new_session(spec, title, category, folder=folder,
+                                                  inherit=inherit))
 
     def _build_right(self) -> None:
         self.right_panel = ctk.CTkFrame(self.paned, width=290, corner_radius=0)
@@ -479,18 +500,21 @@ class ConsoleApp:
         except Exception:
             pass
 
-    def _clip(self, text: str, n: int) -> str:
+    def _clip(self, text: Any, n: int) -> str:
+        text = str(text or "")
         if len(text) > n:
             return text[:n] + f"  …(+{len(text) - n})"
         return text
 
     def _render(self, ev: dict[str, Any]) -> None:
+        if not isinstance(ev, dict):
+            return
         kind = ev.get("type")
         if kind == "agent":
             self._bubble("w", AGENT_BG, f"🧠  {self._clip(ev.get('text', ''), MAX_BUBBLE)}")
         elif kind == "tool_call":
             args = self._clip(str(ev.get("args", "")), 800)
-            self._bubble("w", TOOL_BG, f"⚙  {ev['name']}  {args}",
+            self._bubble("w", TOOL_BG, f"⚙  {ev.get('name', '?')}  {args}",
                          text_color=TOOL_FG, font=self.mono_s, full=True)
         elif kind == "tool_result":
             out = self._clip(ev.get("output", ""), MAX_OUT)
@@ -498,6 +522,9 @@ class ConsoleApp:
         elif kind == "guidance":
             self._bubble("e", GUIDE_BG, f"you ▸ {self._clip(ev.get('text', ''), 500)}",
                          text_color=GUIDE_FG)
+        elif kind == "note":
+            self._bubble("center", "#11151c", self._clip(ev.get("text", ""), 500),
+                         text_color=MUTED, font=self.mono_s)
         elif kind == "status":
             status = ev.get("status", "")
             if status in ("solved", "failed", "error", "cancelled"):
@@ -511,13 +538,13 @@ class ConsoleApp:
         suggestion = self.suggestion_entry.get().strip()
         if not session or not suggestion:
             return
-        context = self._format_transcript(session.transcript)
+        context = self._format_transcript(session)
         context += f"\n\nYour suggestion for the next attempt: {suggestion}"
         spec = dict(session.spec)
         spec["context"] = context
         spec["max_turns"] = session.spec.get("max_turns", 100)
         new_session = self.manager.new_session(spec, session.title, session.category,
-                                               folder=session.folder)
+                                               folder=session.folder, inherit=session)
         self.add_session(new_session)
         self.suggestion_entry.delete(0, "end")
 
@@ -538,20 +565,26 @@ class ConsoleApp:
             self.center_head.configure(text=f"{self.manager.active.title}  ·  {self.manager.active.category}")
             self._render_rail()
 
-    def _format_transcript(self, transcript: list[dict[str, Any]]) -> str:
+    def _format_transcript(self, session: Session) -> str:
+        st = session.state
         lines = [
-            "A previous session already worked on this target. Here is its transcript — "
-            "continue from where it left off, do NOT redo work already done, and pick up the "
-            "most promising thread.\n"
+            "A previous session already worked on this target. Continue from where it left off, "
+            "do NOT redo work already done, and pick up the most promising thread.\n"
         ]
-        for ev in transcript:
+        paths = st.get("paths") or []
+        if paths:
+            lines.append("[findings so far — build on these, do not rediscover them]")
+            lines.append("\n".join(f"  - {p}" for p in paths))
+            lines.append("")
+        lines.append("[transcript]")
+        for ev in session.transcript:
             kind = ev.get("type")
             if kind == "agent":
                 lines.append(f"[agent] {ev.get('text', '')}")
             elif kind == "tool_call":
                 lines.append(f"[tool {ev.get('name', '?')}] {ev.get('args', '')}")
             elif kind == "tool_result":
-                out = ev.get("output", "")
+                out = str(ev.get("output", ""))
                 if len(out) > 500:
                     out = out[:500] + " …"
                 lines.append(f"[result] {out}")
@@ -560,6 +593,7 @@ class ConsoleApp:
             elif kind == "status":
                 extra = ev.get("flag") or ev.get("error") or ""
                 lines.append(f"[status] {ev.get('status', '')} {extra}".strip())
+            # "note" events are GUI-only markers ("continued from …"); skip them.
         return "\n".join(lines)
 
     def _continue_active(self) -> None:
@@ -567,8 +601,9 @@ class ConsoleApp:
         if not session:
             return
         self._inherit = {
-            "context": self._format_transcript(session.transcript),
+            "context": self._format_transcript(session),
             "spec": dict(session.spec),
+            "source": session,
         }
         self._show_setup()
         self._prefill_setup(session.spec, session.title)
@@ -627,15 +662,21 @@ class ConsoleApp:
         box.insert("end", text)
 
     def _poll(self) -> None:
-        self.manager.drain_all()
-        active = self.manager.active
-        if active:
-            start = self._rendered.get(active.id, 0)
-            for ev in active.transcript[start:]:
-                self._render(ev)
-            self._rendered[active.id] = len(active.transcript)
-            self._refresh_panel()
-        self.root.after(self.poll_ms, self._poll)
+        try:
+            self.manager.drain_all()
+            active = self.manager.active
+            if active:
+                start = self._rendered.get(active.id, 0)
+                for ev in active.transcript[start:]:
+                    self._render(ev)
+                self._rendered[active.id] = len(active.transcript)
+                self._refresh_panel()
+        except Exception:
+            # A malformed event must never stop polling, or the console silently freezes.
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.root.after(self.poll_ms, self._poll)
 
     def _refresh_panel(self) -> None:
         active = self.manager.active
@@ -648,7 +689,7 @@ class ConsoleApp:
         self.lbl_timer.configure(text=f"⏱ {active.elapsed():.0f}s")
         self.lbl_counts.configure(text=f"replies {st['replies']} · tool calls {st['tool_calls']}")
         self.lbl_tools.configure(text="   ".join(f"{k}×{v}" for k, v in st["tools_used"].items()))
-        self._set_text(self.txt_findings, "\n".join(st["paths"]) or "—")
+        self._set_text(self.txt_findings, "\n".join(str(p) for p in st["paths"]) or "—")
         self._set_text(self.txt_think, self._clip(st["thinking"] or "—", 20000))
         # keep the full flag text (braces + prefix) untouched — never strip it
         self.lbl_flag.configure(text=st["flag"] or "—")

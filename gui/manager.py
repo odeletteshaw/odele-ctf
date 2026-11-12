@@ -26,7 +26,7 @@ class Session:
     _ids = itertools.count(1)
 
     def __init__(self, spec: dict[str, Any], title: str, category: str,
-                 folder: str | None = None) -> None:
+                 folder: str | None = None, inherit: "Session | None" = None) -> None:
         self.id = next(Session._ids)
         self.spec = spec
         self.category = category
@@ -47,6 +47,17 @@ class Session:
             "tools_used": {},
             "done": False,
         }
+        if inherit is not None:
+            # A continued session carries the previous attempt's findings forward so the
+            # Findings panel isn't blank and the model builds on them instead of redoing them.
+            self.state["paths"] = list(inherit.state.get("paths") or [])
+            self.state["tools_used"] = dict(inherit.state.get("tools_used") or {})
+            note = f"↳ continued from “{inherit.title}” — findings carried over"
+            paths = self.state["paths"]
+            if paths:
+                preview = ", ".join(str(p) for p in paths[:6])
+                note += f": {preview}{' …' if len(paths) > 6 else ''}"
+            self.transcript.append({"type": "note", "text": note})
 
     def start(self) -> None:
         self._proc = _CTX.Process(
@@ -85,10 +96,15 @@ class Session:
                 event = self.events.get_nowait()
             except Exception:
                 break
+            if not isinstance(event, dict):
+                continue
             if event.get("type") == "__done__":
                 self.state["done"] = True
                 continue
-            self._apply(event)
+            try:
+                self._apply(event)
+            except Exception:
+                pass  # a malformed event must never stop this session's drain
             self.transcript.append(event)
             new.append(event)
         # reap the subprocess once it has finished, so it doesn't linger as a zombie
@@ -105,9 +121,10 @@ class Session:
             self.state["tool_calls"] += 1
             name = event.get("name", "?")
             self.state["tools_used"][name] = self.state["tools_used"].get(name, 0) + 1
-            path = (event.get("args") or {}).get("path")
+            args = event.get("args")
+            path = args.get("path") if isinstance(args, dict) else None
             if path and path not in self.state["paths"]:
-                self.state["paths"].append(path)
+                self.state["paths"].append(str(path))
         elif kind == "status":
             self.state["status"] = event.get("status", self.state["status"])
             if event.get("flag"):
@@ -192,8 +209,8 @@ class Manager:
         return False
 
     def new_session(self, spec: dict[str, Any], title: str, category: str,
-                    folder: str | None = None) -> Session:
-        session = Session(spec, title, category, folder=folder)
+                    folder: str | None = None, inherit: Session | None = None) -> Session:
+        session = Session(spec, title, category, folder=folder, inherit=inherit)
         self.sessions.append(session)
         self.active = session
         session.start()

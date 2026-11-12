@@ -4,7 +4,7 @@ model that returns hand-built tool-call messages, then check the recovered flag.
 import json
 from types import SimpleNamespace
 
-from .agent import FLAG_PATTERN
+from .agent import FLAG_PATTERN, GENERAL_FLAG_PATTERN
 
 
 def tool_call(call_id: str, name: str, args: dict) -> SimpleNamespace:
@@ -16,5 +16,5 @@ def tool_call(call_id: str, name: str, args: dict) -> SimpleNamespace:
 
 
 def recovered_flag(final_text: str) -> str | None:
-    flags = FLAG_PATTERN.findall(final_text)
+    flags = FLAG_PATTERN.findall(final_text) or GENERAL_FLAG_PATTERN.findall(final_text)
     return flags[-1] if flags else None
