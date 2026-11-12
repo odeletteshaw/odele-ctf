@@ -176,74 +176,53 @@ class ConsoleApp:
         ctk.CTkLabel(card, text="Start a new session", font=self.bold).pack(
             anchor="w", padx=26, pady=(22, 12))
 
-        # --- Target (open) -------------------------------------------------
-        target = self._section(card, "Target", open_by_default=True)
-        self.desc_entry = ctk.CTkEntry(target, placeholder_text="description / hint (optional)",
-                                       width=440, font=self.mono)
-        self.desc_entry.pack(anchor="w", pady=(0, 6))
-        ctk.CTkLabel(target, text="TARGET URLs", text_color=MUTED, font=hf).pack(
-            anchor="w", pady=(2, 2))
-        self.urls_box = ctk.CTkFrame(target, fg_color="transparent", height=0)
-        self.urls_box.pack(anchor="w", fill="x")
-        self.url_entries: list[ctk.CTkEntry] = []
-        self._add_url_row("")
-        ctk.CTkButton(target, text="＋ Add URL", width=110, height=26,
-                      command=lambda: self._add_url_row("")).pack(anchor="w", pady=(2, 8))
-        ctk.CTkLabel(target, text="ATTACHMENTS", text_color=MUTED, font=hf).pack(
-            anchor="w", pady=(0, 2))
-        self.attach_box = ctk.CTkFrame(target, fg_color="transparent", height=0)
-        self.attach_box.pack(anchor="w", fill="x")
-        self._attachment_paths: list[str] = []
-        ctk.CTkButton(target, text="＋ Add file", width=110, height=26,
-                      command=self._add_attachment).pack(anchor="w", pady=(2, 8))
-
-        # --- Options (collapsed) -------------------------------------------
-        opts = self._section(card, "Options", open_by_default=False)
-        ctk.CTkLabel(opts, text="name", text_color=MUTED, font=hf).pack(anchor="w")
-        self.name_entry = ctk.CTkEntry(opts, placeholder_text="(auto from target)",
+        # --- name / folder / max turns at the top --------------------------
+        opt_row = ctk.CTkFrame(card, fg_color="transparent")
+        opt_row.pack(anchor="w", padx=26)
+        ctk.CTkLabel(opt_row, text="name", text_color=MUTED, font=hf).pack(anchor="w")
+        self.name_entry = ctk.CTkEntry(opt_row, placeholder_text="(auto from target)",
                                        width=260, font=self.mono)
         self.name_entry.pack(anchor="w", pady=(4, 6))
-        ctk.CTkLabel(opts, text="folder", text_color=MUTED, font=hf).pack(anchor="w")
-        self.folder_menu = ctk.CTkOptionMenu(opts, values=["(none)"], width=260,
+        ctk.CTkLabel(opt_row, text="folder", text_color=MUTED, font=hf).pack(anchor="w")
+        self.folder_menu = ctk.CTkOptionMenu(opt_row, values=["(none)"], width=260,
                                              command=lambda _v: None)
         self.folder_menu.pack(anchor="w", pady=(4, 0))
-        ctk.CTkLabel(opts, text="max turns", text_color=MUTED, font=hf).pack(anchor="w", pady=(8, 0))
-        self.turns_entry = ctk.CTkEntry(opts, width=120, font=self.mono)
+        ctk.CTkLabel(opt_row, text="max turns", text_color=MUTED, font=hf).pack(anchor="w", pady=(8, 0))
+        self.turns_entry = ctk.CTkEntry(opt_row, width=120, font=self.mono)
         self.turns_entry.insert(0, "100")
         self.turns_entry.pack(anchor="w", pady=(4, 0))
-        ctk.CTkLabel(opts, text="flag prefix", text_color=MUTED, font=hf).pack(anchor="w", pady=(8, 0))
-        self.flag_entry = ctk.CTkEntry(opts, placeholder_text="(default 'flag')", width=280, font=self.mono)
-        self.flag_entry.pack(anchor="w", pady=(4, 0))
+
+        # --- description / flag prefix ------------------------------------
+        self.desc_entry = ctk.CTkEntry(card, placeholder_text="description / hint (optional)",
+                                       width=440, font=self.mono)
+        self.desc_entry.pack(anchor="w", padx=26, pady=(14, 4))
+        self.flag_entry = ctk.CTkEntry(card, placeholder_text="flag prefix (optional, default 'flag')",
+                                       width=280, font=self.mono)
+        self.flag_entry.pack(anchor="w", padx=26, pady=4)
+
+        # --- target URLs + attachments at the bottom ----------------------
+        ctk.CTkLabel(card, text="TARGET URLs", text_color=MUTED, font=hf).pack(
+            anchor="w", padx=26, pady=(10, 2))
+        self.urls_box = ctk.CTkFrame(card, fg_color="transparent", height=0)
+        self.urls_box.pack(anchor="w", padx=26, fill="x")
+        self.url_entries: list[ctk.CTkEntry] = []
+        self._add_url_row("")
+        ctk.CTkButton(card, text="＋ Add URL", width=110, height=26,
+                      command=lambda: self._add_url_row("")).pack(anchor="w", padx=26, pady=(2, 8))
+
+        ctk.CTkLabel(card, text="ATTACHMENTS", text_color=MUTED, font=hf).pack(
+            anchor="w", padx=26, pady=(0, 2))
+        self.attach_box = ctk.CTkFrame(card, fg_color="transparent", height=0)
+        self.attach_box.pack(anchor="w", padx=26, fill="x")
+        self._attachment_paths: list[str] = []
+        ctk.CTkButton(card, text="＋ Add file", width=110, height=26,
+                      command=self._add_attachment).pack(anchor="w", padx=26, pady=(2, 8))
 
         self.setup_hint = ctk.CTkLabel(card, text="", text_color="#ff6b6b", font=self.mono_s)
         self.setup_hint.pack(anchor="w", padx=26, pady=(10, 0))
         ctk.CTkButton(card, text="Start  ▶", command=self._start_from_setup,
                       height=42, width=150).pack(anchor="w", padx=26, pady=(8, 22))
         return wrap
-
-    def _section(self, parent: ctk.CTkFrame, title: str, open_by_default: bool = True) -> ctk.CTkFrame:
-        """A collapsible accordion section: a header button toggling a body frame."""
-        body = ctk.CTkFrame(parent, fg_color="transparent")
-        body_pack = {"fill": "x", "padx": 26, "pady": (4, 8)}
-
-        def toggle() -> None:
-            if body.winfo_ismapped():
-                body.pack_forget()
-                head.configure(text=f"▸  {title}")
-            else:
-                body.pack(**body_pack)
-                head.configure(text=f"▾  {title}")
-
-        head = ctk.CTkButton(
-            parent, text=f"{'▾' if open_by_default else '▸'}  {title}",
-            anchor="w", fg_color="transparent", hover_color="#20283a",
-            text_color=FG, height=30, corner_radius=6, command=toggle,
-            font=ctk.CTkFont(family="Menlo", size=12, weight="bold"),
-        )
-        head.pack(fill="x", padx=26, pady=(8, 0))
-        if open_by_default:
-            body.pack(**body_pack)
-        return body
 
     def _add_url_row(self, value: str = "") -> None:
         row = ctk.CTkFrame(self.urls_box, fg_color="transparent")
