@@ -3,7 +3,7 @@ object, so the agent can drive phar-deserialization (the classic `file_exists("p
 trigger) without PHP on the box.
 
 This only handles the *mechanical* phar binary format (stub, manifest layout, CRC32,
-SHA1 signature). The agent still has to figure out the target class structure and the
+SHA256 signature). The agent still has to figure out the target class structure and the
 serialized object to embed — that part is the actual reasoning, not this tool.
 """
 
@@ -15,7 +15,7 @@ import zlib
 from core.agent import Tool
 
 _STUB = b"<?php __HALT_COMPILER(); ?>\r\n"
-_SIGNATURE_SHA1 = 0x02
+_SIGNATURE_SHA256 = 0x03
 _FLAG_HAS_SIGNATURE = 0x00010000
 
 
@@ -44,8 +44,9 @@ def build_phar(metadata: bytes, entry: str = "x", entry_content: bytes = b"") ->
         entry_content,                                       # entry content
     ])
     body = _STUB + struct.pack("<I", len(manifest)) + manifest
-    signature = hashlib.sha1(body).digest()
-    return body + struct.pack("<I", _SIGNATURE_SHA1) + signature + b"GBMB"
+    signature = hashlib.sha256(body).digest()
+    # PHP lays the trailer out as: signature bytes, then signature type, then "GBMB".
+    return body + signature + struct.pack("<I", _SIGNATURE_SHA256) + b"GBMB"
 
 
 def phar_tool() -> Tool:
