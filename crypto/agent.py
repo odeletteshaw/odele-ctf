@@ -39,6 +39,16 @@ Flags look like flag{...}. Print the flag you recover and end your final message
 it on its own line."""
 
 
+DIAGNOSTIC = """When stuck or repeating yourself, run these checks before anything heavier:
+- Prefer gcd/divisibility (math.gcd) over full factorization — sympy.factorint on a large
+  composite can hang; check small factors and gcds first.
+- RSA: before d = pow(e, -1, phi), compute gcd(e, p-1) and gcd(e, q-1). If a gcd > 1 the
+  inverse fails and you need roots-of-unity + CRT (multiple plaintext candidates).
+- A brute force over a large keyspace (e.g. 2^32) is too slow in pure Python — write a small
+  C program and compile+run it: subprocess.run(['clang','-O3','x.c','-o','x']) then run './x'.
+- numpy/scipy are available for vectorized correlation attacks and linear algebra."""
+
+
 def solve_crypto(challenge_text: str, model: str | None = None, max_turns: int = 30) -> SolveResult:
     return solve([python_tool()], SYSTEM_PROMPT, challenge_text, model=model, max_turns=max_turns)
 

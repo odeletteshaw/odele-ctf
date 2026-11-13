@@ -69,6 +69,7 @@ def run_loop(
     guidance: GuidanceFn | None = None,
     flag_pattern: "re.Pattern[str] | None" = None,
     persist: bool = False,
+    diagnostic: str | None = None,
 ) -> tuple[str, int]:
     def emit(event: dict[str, Any]) -> None:
         if on_event:
@@ -165,14 +166,14 @@ def run_loop(
         for key in seen_this_turn:
             if repeat_counts[key] >= 2 and key not in nudged_repeats:
                 nudged_repeats.add(key)
-                messages.append({
-                    "role": "user",
-                    "content": (
-                        "You are repeating the exact same tool call you already made. Stop and "
-                        "review your earlier findings for anything you missed, then try a "
-                        "DIFFERENT approach — do not repeat a technique that already failed."
-                    ),
-                })
+                nudge = (
+                    "You are repeating the exact same tool call you already made. Stop and "
+                    "review your earlier findings for anything you missed, then try a "
+                    "DIFFERENT approach — do not repeat a technique that already failed."
+                )
+                if diagnostic:
+                    nudge += "\n\nDiagnostic checklist:\n" + diagnostic
+                messages.append({"role": "user", "content": nudge})
                 print("[nudge] repeated call — try something different", flush=True)
                 emit({"type": "guidance", "text": "(auto) repeated call — try something different"})
     return final_text, tool_calls
@@ -199,6 +200,7 @@ def solve(
     guidance: GuidanceFn | None = None,
     flag_pattern: "re.Pattern[str] | None" = None,
     persist: bool = False,
+    diagnostic: str | None = None,
 ) -> SolveResult:
     if not config.API_KEY:
         raise RuntimeError("No API key. Set DEEPSEEK_API_KEY (or CTF_API_KEY), e.g. in .env")
@@ -207,6 +209,7 @@ def solve(
     final_text, tool_calls = run_loop(
         chat, tools, system_prompt, user_prompt, max_turns,
         on_event=on_event, guidance=guidance, flag_pattern=flag_pattern, persist=persist,
+        diagnostic=diagnostic,
     )
     flags = (flag_pattern or FLAG_PATTERN).findall(final_text)
     if not flags:

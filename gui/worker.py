@@ -3,6 +3,7 @@ structured events back to the parent over `events_q`; reads supervisor guidance 
 `guidance_q`. Each session lives in its own process, so a crash or hang is contained.
 """
 
+import importlib
 import re
 import sys
 from pathlib import Path
@@ -38,12 +39,19 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any) -> None:
         known_flag, tools, system, user, cleanup = build_task(spec)
         if spec.get("context"):
             user = spec["context"] + "\n\n---\n\n" + user
+        # Category-specific "when stuck" checklist, injected by run_loop on repeated calls.
+        category = spec.get("category") or "web"
+        diagnostic = None
+        try:
+            diagnostic = getattr(importlib.import_module(f"{category}.agent"), "DIAGNOSTIC", None)
+        except Exception:
+            diagnostic = None
         events_q.put({"type": "status", "status": "running"})
         # The GUI passes a per-session turn budget (default 100). Custom targets also get
         # persist=True so the agent keeps going on text without a flag.
         result = solve(tools, system, user, on_event=on_event, guidance=guidance,
                        flag_pattern=pattern, persist=(spec.get("kind") == "custom"),
-                       max_turns=int(spec.get("max_turns", 100)))
+                       max_turns=int(spec.get("max_turns", 100)), diagnostic=diagnostic)
         if known_flag is not None:
             status = "solved" if result.flag == known_flag else "failed"
         else:
