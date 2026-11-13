@@ -14,7 +14,10 @@ def python_tool(workdir: Path | None = None) -> Tool:
         "Run Python 3 code in an isolated subprocess (no network, time-limited) and return "
         "its stdout/stderr. Use it for anything that needs real computation: base64/hex, "
         "hashing and HMAC, signing or forging tokens, brute-forcing a weak secret, or "
-        "breaking a cipher. Print your results."
+        "breaking a cipher. numpy and scipy are available for vectorized/linear-algebra work. "
+        "For a brute-force too slow in pure Python (e.g. a 32-bit keyspace), write a small C "
+        "program and compile+run it with subprocess: subprocess.run(['clang','-O3','x.c',"
+        "'-o','x']) then subprocess.run(['./x']). Print your results."
     )
     if workdir is not None:
         description += (
