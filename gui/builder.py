@@ -64,12 +64,15 @@ def _benchmark(category: str, name: str) -> Built:
     raise ValueError(f"unsupported category: {category}")
 
 
-def _custom(urls: list[str], description: str, attachments: list[str]) -> Built:
-    """A real external target: the agent gets the web toolset (http + run_python), the http
-    tool able to hit each listed origin, and any attached files copied into a persistent
-    workspace the run_python tool can read. No known flag — any flag found is reported."""
-    web = importlib.import_module("web.agent")
-    client = web.new_http_client()
+def _custom(spec: dict[str, Any]) -> Built:
+    """A real external target. The direction picks the toolset: web gets http + run_python,
+    crypto/misc and forensics get run_python (pointed at a workspace when the user attached
+    files). No known flag — any flag found is reported."""
+    direction = spec.get("category", "web")
+    description = spec.get("description", "")
+    attachments = spec.get("attachments") or []
+    urls = spec.get("urls") or ([spec["url"]] if spec.get("url") else [])
+
     workdir: Path | None = None
     attachment_block = ""
     if attachments:
@@ -94,19 +97,45 @@ def _custom(urls: list[str], description: str, attachments: list[str]) -> Built:
             "Attached files (also readable via run_python's working directory):\n"
             + "\n".join(lines) + "\n\n"
         )
-    tools = web.web_tools_multi(urls, client, workdir)
-    targets = "\n".join(f"[{i}] {u}" for i, u in enumerate(urls))
-    user = (
-        f"Targets:\n{targets}\n\n"
-        f"{attachment_block}Challenge description: {description or '(none given)'}"
-    )
 
-    def cleanup() -> None:
-        client.close()
+    def cleanup_workdir() -> None:
         if workdir is not None:
             shutil.rmtree(workdir, ignore_errors=True)
 
-    return None, tools, web.SYSTEM_PROMPT, user, cleanup
+    if direction == "web":
+        web = importlib.import_module("web.agent")
+        client = web.new_http_client()
+        tools = web.web_tools_multi(urls, client, workdir)
+        targets = "\n".join(f"[{i}] {u}" for i, u in enumerate(urls))
+        user = (
+            f"Targets:\n{targets}\n\n"
+            f"{attachment_block}Challenge description: {description or '(none given)'}"
+        )
+
+        def cleanup() -> None:
+            client.close()
+            cleanup_workdir()
+
+        return None, tools, web.SYSTEM_PROMPT, user, cleanup
+
+    if direction == "crypto":
+        crypto = importlib.import_module("crypto.agent")
+        tools = [python_tool(workdir)]
+        user = f"{attachment_block}Challenge description: {description or '(none given)'}"
+        return None, tools, crypto.SYSTEM_PROMPT, user, cleanup_workdir
+
+    if direction == "forensics":
+        forensics = importlib.import_module("forensics.agent")
+        if workdir is not None:
+            tools = [python_tool(workdir)]
+            system = forensics.WORKSPACE_SYSTEM_PROMPT
+        else:
+            tools = [python_tool()]
+            system = forensics.SYSTEM_PROMPT
+        user = f"{attachment_block}Challenge description: {description or '(none given)'}"
+        return None, tools, system, user, cleanup_workdir
+
+    raise ValueError(f"unsupported custom direction: {direction}")
 
 
 def build_task(spec: dict[str, Any]) -> Built:
@@ -114,8 +143,5 @@ def build_task(spec: dict[str, Any]) -> Built:
     if kind == "benchmark":
         return _benchmark(spec["category"], spec["name"])
     if kind == "custom":
-        # Accept both the old single-url spec and the new multi-url + attachments spec.
-        urls = spec.get("urls") or ([spec["url"]] if spec.get("url") else [])
-        attachments = spec.get("attachments") or []
-        return _custom(urls, spec.get("description", ""), attachments)
+        return _custom(spec)
     raise ValueError(f"unknown task kind: {kind}")

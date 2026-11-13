@@ -192,6 +192,14 @@ class ConsoleApp:
         self.turns_entry.insert(0, "100")
         self.turns_entry.pack(anchor="w", pady=(4, 0))
 
+        # --- direction (picks the toolset) --------------------------------
+        ctk.CTkLabel(card, text="direction", text_color=MUTED, font=hf).pack(
+            anchor="w", padx=26, pady=(10, 2))
+        self.dir_seg = ctk.CTkSegmentedButton(card, values=["web", "crypto", "forensics"],
+                                              command=lambda _v: self._on_direction_changed())
+        self.dir_seg.set("web")
+        self.dir_seg.pack(anchor="w", padx=26, pady=(0, 4))
+
         # --- description / flag prefix ------------------------------------
         self.desc_entry = ctk.CTkEntry(card, placeholder_text="description / hint (optional)",
                                        width=440, font=self.mono)
@@ -200,18 +208,21 @@ class ConsoleApp:
                                        width=280, font=self.mono)
         self.flag_entry.pack(anchor="w", padx=26, pady=4)
 
-        # --- target URLs + attachments at the bottom ----------------------
-        ctk.CTkLabel(card, text="TARGET URLs", text_color=MUTED, font=hf).pack(
-            anchor="w", padx=26, pady=(10, 2))
-        self.urls_box = ctk.CTkFrame(card, fg_color="transparent", height=0)
-        self.urls_box.pack(anchor="w", padx=26, fill="x")
+        # --- target URLs (web only) --------------------------------------
+        self.url_section = ctk.CTkFrame(card, fg_color="transparent")
+        self.url_section.pack(anchor="w", padx=26, fill="x")
+        ctk.CTkLabel(self.url_section, text="TARGET URLs", text_color=MUTED, font=hf).pack(
+            anchor="w", pady=(10, 2))
+        self.urls_box = ctk.CTkFrame(self.url_section, fg_color="transparent", height=0)
+        self.urls_box.pack(anchor="w", fill="x")
         self.url_entries: list[ctk.CTkEntry] = []
         self._add_url_row("")
-        ctk.CTkButton(card, text="＋ Add URL", width=110, height=26,
-                      command=lambda: self._add_url_row("")).pack(anchor="w", padx=26, pady=(2, 8))
+        ctk.CTkButton(self.url_section, text="＋ Add URL", width=110, height=26,
+                      command=lambda: self._add_url_row("")).pack(anchor="w", pady=(2, 0))
 
+        # --- attachments --------------------------------------------------
         ctk.CTkLabel(card, text="ATTACHMENTS", text_color=MUTED, font=hf).pack(
-            anchor="w", padx=26, pady=(0, 2))
+            anchor="w", padx=26, pady=(10, 2))
         self.attach_box = ctk.CTkFrame(card, fg_color="transparent", height=0)
         self.attach_box.pack(anchor="w", padx=26, fill="x")
         self._attachment_paths: list[str] = []
@@ -223,6 +234,13 @@ class ConsoleApp:
         ctk.CTkButton(card, text="Start  ▶", command=self._start_from_setup,
                       height=42, width=150).pack(anchor="w", padx=26, pady=(8, 22))
         return wrap
+
+    def _on_direction_changed(self) -> None:
+        """Show the URL section only for web targets; crypto/forensics don't need a URL."""
+        if self.dir_seg.get() == "web":
+            self.url_section.pack(anchor="w", padx=26, fill="x")
+        else:
+            self.url_section.pack_forget()
 
     def _add_url_row(self, value: str = "") -> None:
         row = ctk.CTkFrame(self.urls_box, fg_color="transparent")
@@ -296,6 +314,8 @@ class ConsoleApp:
         self.turns_entry.delete(0, "end")
         self.turns_entry.insert(0, "100")
         self.folder_menu.set("(none)")
+        self.dir_seg.set("web")
+        self._on_direction_changed()
         self.desc_entry.delete(0, "end")
         self.flag_entry.delete(0, "end")
         for child in self.urls_box.winfo_children():
@@ -307,19 +327,25 @@ class ConsoleApp:
         self.setup_hint.configure(text="")
 
     def _start_from_setup(self) -> None:
+        direction = self.dir_seg.get()
         urls = self._collect_urls()
-        if not urls:
-            self.setup_hint.configure(text="enter at least one target URL (http:// or https://)")
-            return
-        for u in urls:
-            if not (u.startswith("http://") or u.startswith("https://")):
-                self.setup_hint.configure(text="target URLs must start with http:// or https://")
+        if direction == "web":
+            if not urls:
+                self.setup_hint.configure(text="enter at least one target URL (http:// or https://)")
                 return
-        spec = {"kind": "custom", "urls": urls, "description": self.desc_entry.get().strip(),
+            for u in urls:
+                if not (u.startswith("http://") or u.startswith("https://")):
+                    self.setup_hint.configure(text="target URLs must start with http:// or https://")
+                    return
+            title = urlparse(urls[0]).netloc or urls[0][:28]
+        else:
+            urls = []  # crypto/forensics are local/offline — no URL needed
+            title = direction
+        spec = {"kind": "custom", "category": direction, "urls": urls,
+                "description": self.desc_entry.get().strip(),
                 "flag_prefix": self.flag_entry.get().strip() or "flag",
                 "attachments": list(self._attachment_paths)}
-        title = urlparse(urls[0]).netloc or urls[0][:28]
-        category = "custom"
+        category = direction
         custom_name = self.name_entry.get().strip()
         if custom_name:
             title = custom_name
@@ -701,6 +727,9 @@ class ConsoleApp:
 
     def _prefill_setup(self, spec: dict[str, Any], title: str) -> None:
         # Only custom targets are launched from the GUI now.
+        direction = spec.get("category", "web")
+        self.dir_seg.set(direction if direction in ("web", "crypto", "forensics") else "web")
+        self._on_direction_changed()
         urls = spec.get("urls") or ([spec.get("url")] if spec.get("url") else [])
         for child in self.urls_box.winfo_children():
             child.destroy()
