@@ -557,29 +557,30 @@ class ConsoleApp:
                 self._autosolve_submit()
 
     def _autosolve_worker(self, q: "queue.Queue") -> None:
-        from core.autosolve import prepare_challenge
-        from core.platform import PlatformClient
-        client = PlatformClient()
         try:
-            nc = client.next_challenges(limit=5)
-            items = nc.get("items") or []
-            if not items:
-                q.put(("stop", "没有未解的题了"))
-                return
-            for item in items:
-                try:
-                    result = prepare_challenge(client, item)
-                except Exception as e:
-                    q.put(("error", f"{item.get('name')}: {e}"))
+            from core.autosolve import prepare_challenge
+            from core.platform import PlatformClient
+            client = PlatformClient()
+            try:
+                nc = client.next_challenges(limit=5)
+                items = nc.get("items") or []
+                if not items:
+                    q.put(("stop", "没有未解的题了"))
                     return
-                if result is not None:
-                    q.put(("spec", result))
-                    return
-            q.put(("stop", "剩余题都不支持（仅 web/crypto/forensics）"))
+                for item in items:
+                    try:
+                        result = prepare_challenge(client, item)
+                    except Exception as e:
+                        q.put(("error", f"{item.get('name')}: {e}"))
+                        return
+                    if result is not None:
+                        q.put(("spec", result))
+                        return
+                q.put(("stop", "剩余题都不支持（仅 web/crypto/forensics）"))
+            finally:
+                client.close()
         except Exception as e:
             q.put(("error", str(e)))
-        finally:
-            client.close()
 
     def _autosolve_submit(self) -> None:
         from core.platform import PlatformClient, PlatformError
@@ -602,6 +603,12 @@ class ConsoleApp:
                 note = "no flag found"
             try:
                 client.log_note(meta["challenge_id"], "result", note[:2000])
+            except PlatformError:
+                pass
+            # Free the environment slot so the next challenge can start its own (the
+            # platform allows at most one target environment per agent at a time).
+            try:
+                client.delete_environment(meta["ground_id"], meta["challenge_id"])
             except PlatformError:
                 pass
         finally:

@@ -44,12 +44,16 @@ def _wait_environment(client: PlatformClient, ground_id, challenge_id) -> list[s
             env = {}
         if env.get("access_ready"):
             return _access_urls(env)
-        if env.get("status") == "error" and restarts < 1:
+        status = env.get("status")
+        if status == "error" and restarts < 1:
             restarts += 1
             try:
                 client.start_environment(ground_id, challenge_id)
             except PlatformError:
                 pass
+        elif status == "none":
+            # start failed (e.g. environment quota already used by another challenge) — give up
+            return []
         time.sleep(5)
     return []
 
