@@ -19,6 +19,21 @@ from . import config  # noqa: F401  (loads .env into os.environ)
 DEFAULT_BASE = "https://ctf2.dasctf.com"
 
 
+def list_tokens() -> list[str]:
+    """Return the CTF2 agent tokens from env (CTF2_AGENT_TOKEN_0/1/2..., or the legacy
+    CTF2_AGENT_TOKEN as a single fallback)."""
+    tokens: list[str] = []
+    for i in range(16):
+        t = os.environ.get(f"CTF2_AGENT_TOKEN_{i}")
+        if t:
+            tokens.append(t)
+        else:
+            break
+    if not tokens and os.environ.get("CTF2_AGENT_TOKEN"):
+        tokens.append(os.environ["CTF2_AGENT_TOKEN"])
+    return tokens
+
+
 class PlatformError(Exception):
     def __init__(self, code, message, retryable=False, retry_after_ms=None, hint=None,
                  status=None):

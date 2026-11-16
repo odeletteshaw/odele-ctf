@@ -63,15 +63,7 @@ class ConsoleApp:
         self._rendered: dict[int, int] = {}
         self._rows: dict[int, ctk.CTkButton] = {}
         self._inherit: dict[str, Any] | None = None
-        self._auto: dict[str, Any] = {
-            "running": False,
-            "max": 3,             # max challenges per auto-solve run (0 = unlimited)
-            "done": 0,
-            "current": None,      # Session currently solving
-            "current_meta": None,  # {challenge_id, ground_id, name, category}
-            "phase": "idle",      # idle | preparing | solving
-            "queue": queue.Queue(),
-        }
+        self._auto_slots: list[dict[str, Any]] = []  # one slot per (direction, token)
 
         self.root = ctk.CTk()
         self.root.title("odele-ctf · supervision console")
@@ -511,85 +503,141 @@ class ConsoleApp:
 
     # --- CTF2 auto-solve ---------------------------------------------------
     def _toggle_autosolve(self) -> None:
-        a = self._auto
-        if a["running"]:
-            self._autosolve_stop("已手动停止")
+        if any(s["running"] for s in self._auto_slots):
+            for s in self._auto_slots:
+                s["running"] = False
+            self._auto_slots = []
+            self.btn_auto.configure(text="🤖 CTF2 打题")
+            self._render_rail()
             return
-        n = simpledialog.askinteger(
-            "CTF2 自动打题", "最多解几道题？（0 = 不限）",
-            initialvalue=3, minvalue=0, parent=self.root,
-        )
-        if n is None:
+        directions, maxn = self._autosolve_dialog()
+        if not directions:
             return
-        if "ctf2" not in self.manager.folders:
-            self.manager.new_folder("ctf2")
-        a.update({"running": True, "max": n, "done": 0, "current": None,
-                  "current_meta": None, "phase": "idle", "queue": queue.Queue()})
+        from core.platform import list_tokens
+        tokens = list_tokens()
+        if not tokens:
+            messagebox.showerror(
+                "CTF2", "没有找到 token（请在 .env 里配 CTF2_AGENT_TOKEN_0/1/2）", parent=self.root)
+            return
+        self._auto_slots = []
+        for i, direction in enumerate(directions):
+            if i >= len(tokens):
+                break
+            folder = f"ctf2_{direction}"
+            if folder not in self.manager.folders:
+                self.manager.new_folder(folder)
+            self._auto_slots.append({
+                "running": True, "direction": direction, "token": tokens[i],
+                "max": maxn, "done": 0, "current": None, "current_meta": None,
+                "phase": "idle", "queue": queue.Queue(),
+            })
         self.btn_auto.configure(text="⏹ 停止打题")
         self._render_rail()
 
-    def _autosolve_step(self) -> None:
-        """Advance the auto-solve state machine (called from _poll)."""
-        a = self._auto
-        if not a["running"]:
-            return
-        if a["phase"] == "idle":
-            a["phase"] = "preparing"
-            threading.Thread(target=self._autosolve_worker, args=(a["queue"],), daemon=True).start()
-        elif a["phase"] == "preparing":
+    def _autosolve_dialog(self) -> tuple[list[str], int]:
+        win = ctk.CTkToplevel(self.root)
+        win.title("CTF2 自动打题")
+        win.geometry("340x320")
+        win.grab_set()
+        win.attributes("-topmost", True)
+        ctk.CTkLabel(win, text="选择打题方向", font=self.bold).pack(anchor="w", padx=20, pady=(18, 6))
+        dirs = ["web", "crypto", "forensics"]
+        boxes: dict[str, tk.BooleanVar] = {}
+        for d in dirs:
+            var = tk.BooleanVar(value=True)
+            boxes[d] = var
+            ctk.CTkCheckBox(win, text=d, variable=var).pack(anchor="w", padx=20, pady=2)
+        ctk.CTkLabel(win, text="每个方向最多解几道（0=不限）", text_color=MUTED,
+                     font=self.mono_s).pack(anchor="w", padx=20, pady=(14, 4))
+        entry = ctk.CTkEntry(win, width=120, font=self.mono)
+        entry.insert(0, "3")
+        entry.pack(anchor="w", padx=20)
+        result: dict[str, Any] = {}
+
+        def ok() -> None:
+            result["dirs"] = [d for d in dirs if boxes[d].get()]
             try:
-                result = a["queue"].get_nowait()
+                result["max"] = max(0, int(entry.get().strip() or "0"))
+            except ValueError:
+                result["max"] = 3
+            win.destroy()
+
+        row = ctk.CTkFrame(win, fg_color="transparent")
+        row.pack(anchor="w", padx=20, pady=16)
+        ctk.CTkButton(row, text="开始", width=100, command=ok).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(row, text="取消", width=100, fg_color="#2a3648",
+                      command=win.destroy).pack(side="left")
+        self.root.wait_window(win)
+        return result.get("dirs", []), result.get("max", 3)
+
+    def _autosolve_step(self) -> None:
+        """Advance every auto-solve slot (called from _poll)."""
+        for slot in list(self._auto_slots):
+            if not slot["running"]:
+                continue
+            self._step_slot(slot)
+        if self._auto_slots and not any(s["running"] for s in self._auto_slots):
+            self.btn_auto.configure(text="🤖 CTF2 打题")
+
+    def _step_slot(self, slot: dict) -> None:
+        if slot["phase"] == "idle":
+            slot["phase"] = "preparing"
+            threading.Thread(target=self._autosolve_worker, args=(slot,), daemon=True).start()
+        elif slot["phase"] == "preparing":
+            try:
+                result = slot["queue"].get_nowait()
             except queue.Empty:
                 return
             if isinstance(result, tuple) and result[0] == "spec":
                 spec, meta = result[1]
-                session = self.manager.new_session(spec, meta["name"], meta["category"], folder="ctf2")
-                a["current"] = session
-                a["current_meta"] = meta
-                a["phase"] = "solving"
+                session = self.manager.new_session(
+                    spec, meta["name"], meta["category"], folder=f"ctf2_{slot['direction']}")
+                slot["current"] = session
+                slot["current_meta"] = meta
+                slot["phase"] = "solving"
                 self.add_session(session)
             else:
                 msg = result[1] if isinstance(result, tuple) else "打题结束"
-                self._autosolve_stop(msg)
-        elif a["phase"] == "solving":
-            session = a["current"]
+                self._stop_slot(slot, msg)
+        elif slot["phase"] == "solving":
+            session = slot["current"]
             if session is not None and session.state["done"]:
-                self._autosolve_submit()
+                self._submit_slot(slot)
 
-    def _autosolve_worker(self, q: "queue.Queue") -> None:
+    def _autosolve_worker(self, slot: dict) -> None:
         try:
             from core.autosolve import prepare_challenge
             from core.platform import PlatformClient
-            client = PlatformClient()
+            client = PlatformClient(token=slot["token"])
             try:
-                nc = client.next_challenges(limit=5)
+                nc = client.next_challenges(limit=10)
                 items = nc.get("items") or []
-                if not items:
-                    q.put(("stop", "没有未解的题了"))
+                item = next((it for it in items
+                             if str(it.get("category", "")).lower() == slot["direction"]), None)
+                if item is None:
+                    slot["queue"].put(("stop", f"{slot['direction']} 没有未解的题了"))
                     return
-                for item in items:
-                    try:
-                        result = prepare_challenge(client, item)
-                    except Exception as e:
-                        q.put(("error", f"{item.get('name')}: {e}"))
-                        return
-                    if result is not None:
-                        q.put(("spec", result))
-                        return
-                q.put(("stop", "剩余题都不支持（仅 web/crypto/forensics）"))
+                try:
+                    result = prepare_challenge(client, item)
+                except Exception as e:
+                    slot["queue"].put(("error", f"{item.get('name')}: {e}"))
+                    return
+                if result is None:
+                    slot["queue"].put(("stop", f"{slot['direction']} 不支持"))
+                    return
+                slot["queue"].put(("spec", result))
             finally:
                 client.close()
         except Exception as e:
-            q.put(("error", str(e)))
+            slot["queue"].put(("error", str(e)))
 
-    def _autosolve_submit(self) -> None:
+    def _submit_slot(self, slot: dict) -> None:
         from core.platform import PlatformClient, PlatformError
-        a = self._auto
-        session = a["current"]
-        meta = a["current_meta"]
-        a["current"] = None
-        a["current_meta"] = None
-        client = PlatformClient()
+        session = slot["current"]
+        meta = slot["current_meta"]
+        slot["current"] = None
+        slot["current_meta"] = None
+        client = PlatformClient(token=slot["token"])
         note = ""
         try:
             flag = session.state.get("flag") if session else None
@@ -613,19 +661,18 @@ class ConsoleApp:
                 pass
         finally:
             client.close()
-        a["done"] += 1
-        if a["max"] and a["done"] >= a["max"]:
-            self._autosolve_stop(f"已达上限（{a['done']} 道）")
+        slot["done"] += 1
+        if slot["max"] and slot["done"] >= slot["max"]:
+            self._stop_slot(slot, f"{slot['direction']} 已达上限（{slot['done']} 道）")
         else:
-            a["phase"] = "idle"
+            slot["phase"] = "idle"
 
-    def _autosolve_stop(self, msg: str) -> None:
-        self._auto["running"] = False
-        self._auto["phase"] = "idle"
-        self._auto["current"] = None
-        self._auto["current_meta"] = None
-        self.btn_auto.configure(text="🤖 CTF2 打题")
-        print(f"[autosolve] {msg}")
+    def _stop_slot(self, slot: dict, msg: str) -> None:
+        slot["running"] = False
+        slot["phase"] = "idle"
+        slot["current"] = None
+        slot["current_meta"] = None
+        print(f"[autosolve:{slot['direction']}] {msg}")
 
     def _render_rail(self) -> None:
         for child in self.rail_list.winfo_children():
