@@ -638,29 +638,29 @@ class ConsoleApp:
         slot["current"] = None
         slot["current_meta"] = None
         client = PlatformClient(token=slot["token"])
-        note = ""
         try:
             flag = session.state.get("flag") if session else None
-            if flag:
-                try:
-                    client.submit_flag(meta["ground_id"], meta["challenge_id"], flag)
-                    note = f"solved: {flag}"
-                except PlatformError as e:
-                    note = f"submit failed: {e.code} {e.message}"
-            else:
-                note = "no flag found"
             try:
-                client.log_note(meta["challenge_id"], "result", note[:2000])
-            except PlatformError:
-                pass
-            # Free the environment slot so the next challenge can start its own (the
-            # platform allows at most one target environment per agent at a time).
+                if flag:
+                    try:
+                        client.submit_flag(meta["ground_id"], meta["challenge_id"], flag)
+                    except PlatformError as e:
+                        print(f"[autosolve:{slot['direction']}] submit: {e.code}")
+                client.log_note(meta["challenge_id"], "result",
+                                (f"solved: {flag}" if flag else "no flag found")[:2000])
+            except Exception as e:
+                print(f"[autosolve:{slot['direction']}] submit/note error: {e}")
+            # Always free the environment slot, even if submit/note failed — a leaked
+            # target blocks every later challenge for this agent.
             try:
                 client.delete_environment(meta["ground_id"], meta["challenge_id"])
-            except PlatformError:
-                pass
+            except Exception as e:
+                print(f"[autosolve:{slot['direction']}] delete env error: {e}")
         finally:
-            client.close()
+            try:
+                client.close()
+            except Exception:
+                pass
         slot["done"] += 1
         if slot["max"] and slot["done"] >= slot["max"]:
             self._stop_slot(slot, f"{slot['direction']} 已达上限（{slot['done']} 道）")
