@@ -781,11 +781,28 @@ class ConsoleApp:
         bubble = ctk.CTkFrame(holder, fg_color=bg, corner_radius=12)
         bubble.pack(fill="x" if full else None, anchor=anchor,
                     padx=(0, 70) if anchor == "w" and not full else ((70, 0) if anchor == "e" else 0))
-        ctk.CTkLabel(bubble, text=text, justify="center" if anchor == "center" else "left",
-                     wraplength=WRAP if not full else 640, text_color=text_color,
-                     font=font or self.mono).pack(
-            padx=12, pady=8, anchor="center" if anchor == "center" else "w")
+        self._bubble_text(bubble, text, text_color=text_color, font=font or self.mono,
+                          wrap_chars=80 if not full else 92, center=(anchor == "center"))
         self._scroll_bottom()
+
+    def _bubble_text(self, parent: ctk.CTkFrame, text: str, *, text_color: str,
+                     font: Any, wrap_chars: int, center: bool = False) -> None:
+        """A read-only, selectable text widget sized to fit the bubble (so text is copyable)."""
+        fam = font.cget("family") if hasattr(font, "cget") else "Menlo"
+        size = font.cget("size") if hasattr(font, "cget") else 12
+        box = tk.Text(parent, wrap="word", width=wrap_chars, bd=0, relief="flat",
+                      highlightthickness=0, bg=parent.cget("fg_color"), fg=text_color,
+                      font=(fam, size), cursor="xterm")
+        box.insert("1.0", text)
+        if center:
+            box.tag_configure("center", justify="center")
+            box.tag_add("center", "1.0", "end")
+        box.configure(state="disabled")
+        lines = box.count("1.0", "end", "displaylines")
+        if isinstance(lines, tuple):
+            lines = lines[0]
+        box.configure(height=max(1, int(lines)))
+        box.pack(fill="x", padx=8, pady=5)
 
     def _scroll_bottom(self) -> None:
         try:
