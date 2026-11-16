@@ -48,9 +48,10 @@ class PlatformError(Exception):
 
 class PlatformClient:
     def __init__(self, token: str | None = None, base: str | None = None):
-        self.token = token or os.environ.get("CTF2_AGENT_TOKEN")
+        tokens = list_tokens()
+        self.token = token or os.environ.get("CTF2_AGENT_TOKEN") or (tokens[0] if tokens else None)
         if not self.token:
-            raise RuntimeError("CTF2_AGENT_TOKEN is not set (add it to .env)")
+            raise RuntimeError("no CTF2 agent token set (add CTF2_AGENT_TOKEN_0 to .env)")
         self.client = httpx.Client(
             base_url=base or DEFAULT_BASE,
             headers={"Authorization": f"Bearer {self.token}"},
@@ -89,10 +90,14 @@ class PlatformClient:
         return self._request("GET", "/api/open/v1/user/agent/me/")
 
     def next_challenges(self, limit: int = 1, category: str | None = None,
-                        source: str = "practice") -> dict:
+                        source: str = "practice", difficulty: str | None = None) -> dict:
+        params: dict = {"limit": limit, "source": source}
+        if category:
+            params["category"] = category
+        if difficulty:
+            params["difficulty"] = difficulty
         return self._request(
-            "GET", "/api/open/v1/user/agent/next-challenges/",
-            params={"limit": limit, "category": category, "source": source},
+            "GET", "/api/open/v1/user/agent/next-challenges/", params=params,
         )
 
     # --- practice ----------------------------------------------------------

@@ -166,6 +166,9 @@ class ConsoleApp:
         self.chat.grid(row=1, column=0, sticky="nsew", padx=8)
         self.setup = self._build_setup(wrap)
         self.setup.grid(row=1, column=0, sticky="nsew")
+        self.autosolve = self._build_autosolve(wrap)
+        self.autosolve.grid(row=1, column=0, sticky="nsew")
+        self.autosolve.grid_remove()
 
         self.bottom = ctk.CTkFrame(wrap, corner_radius=0, fg_color="#141822")
         self.bottom.grid(row=2, column=0, sticky="ew")
@@ -246,6 +249,86 @@ class ConsoleApp:
         ctk.CTkButton(card, text="Start  ▶", command=self._start_from_setup,
                       height=42, width=150).pack(anchor="w", padx=26, pady=(8, 22))
         return wrap
+
+    def _build_autosolve(self, parent: ctk.CTkFrame) -> ctk.CTkFrame:
+        wrap = ctk.CTkFrame(parent, fg_color="transparent")
+        card = ctk.CTkFrame(wrap, fg_color="#141a24", corner_radius=14)
+        card.pack(padx=48, pady=28, fill="x", anchor="n")
+        hf = ctk.CTkFont(family="Menlo", size=11, weight="bold")
+        ctk.CTkLabel(card, text="CTF2 自动打题", font=self.bold).pack(anchor="w", padx=26, pady=(22, 12))
+
+        ctk.CTkLabel(card, text="DIRECTION（多选）", text_color=MUTED, font=hf).pack(anchor="w", padx=26)
+        drow = ctk.CTkFrame(card, fg_color="transparent")
+        drow.pack(anchor="w", padx=22, pady=(6, 14))
+        self.auto_dir_boxes: dict[str, tk.BooleanVar] = {}
+        for d in ["web", "crypto", "misc", "forensics", "pwn", "reverse", "ai"]:
+            var = tk.BooleanVar(value=(d in ("web", "crypto", "forensics")))
+            self.auto_dir_boxes[d] = var
+            ctk.CTkCheckBox(drow, text=d, variable=var).pack(side="left", padx=6, pady=3)
+
+        ctk.CTkLabel(card, text="DIFFICULTY", text_color=MUTED, font=hf).pack(anchor="w", padx=26)
+        self.auto_diff_seg = ctk.CTkSegmentedButton(card, values=["不限", "简单", "中等", "困难"])
+        self.auto_diff_seg.set("不限")
+        self.auto_diff_seg.pack(anchor="w", padx=26, pady=(4, 14))
+
+        ctk.CTkLabel(card, text="每个方向最多解几道（0 = 不限）", text_color=MUTED, font=hf).pack(anchor="w", padx=26)
+        self.auto_max_entry = ctk.CTkEntry(card, width=120, font=self.mono)
+        self.auto_max_entry.insert(0, "3")
+        self.auto_max_entry.pack(anchor="w", padx=26, pady=(4, 14))
+
+        self.auto_hint = ctk.CTkLabel(card, text="", text_color="#ff6b6b", font=self.mono_s)
+        self.auto_hint.pack(anchor="w", padx=26)
+        brow = ctk.CTkFrame(card, fg_color="transparent")
+        brow.pack(anchor="w", padx=26, pady=(10, 22))
+        ctk.CTkButton(brow, text="开始 ▶", command=self._start_autosolve, height=38, width=140).pack(
+            side="left", padx=(0, 8))
+        ctk.CTkButton(brow, text="返回", command=self._show_setup, height=38, width=100,
+                      fg_color="#2a3648", hover_color="#35445a").pack(side="left")
+        return wrap
+
+    def _show_autosolve(self) -> None:
+        self.manager.active = None
+        self._set_right_panel(False)
+        self.center_head.configure(text="CTF2 自动打题")
+        self.chat.grid_remove()
+        self.bottom.grid_remove()
+        self.setup.grid_remove()
+        self.autosolve.grid()
+        self.auto_hint.configure(text="")
+
+    def _start_autosolve(self) -> None:
+        directions = [d for d, var in self.auto_dir_boxes.items() if var.get()]
+        if not directions:
+            self.auto_hint.configure(text="至少勾选一个方向")
+            return
+        try:
+            maxn = max(0, int(self.auto_max_entry.get().strip() or "0"))
+        except ValueError:
+            maxn = 3
+        diff = {"简单": "Easy", "中等": "Medium", "困难": "Hard"}.get(self.auto_diff_seg.get())
+        from core.platform import list_tokens
+        tokens = list_tokens()
+        if not tokens:
+            self.auto_hint.configure(text="没有 token（.env 里配 CTF2_AGENT_TOKEN_0/1/2）")
+            return
+        self._auto_slots = []
+        for i, direction in enumerate(directions):
+            if i >= len(tokens):
+                break
+            folder = f"ctf2_{direction}"
+            if folder not in self.manager.folders:
+                self.manager.new_folder(folder)
+            self._auto_slots.append({
+                "running": True, "direction": direction, "token": tokens[i],
+                "max": maxn, "difficulty": diff, "done": 0, "current": None,
+                "current_meta": None, "phase": "idle", "queue": queue.Queue(),
+            })
+        self.btn_auto.configure(text="⏹ 停止打题")
+        self._render_rail()
+        # switch center to the chat; sessions auto-select as they spawn
+        self.autosolve.grid_remove()
+        self.chat.grid()
+        self._set_right_panel(True)
 
     def _on_direction_changed(self) -> None:
         """Show the URL section only for web targets; crypto/forensics don't need a URL."""
@@ -510,65 +593,7 @@ class ConsoleApp:
             self.btn_auto.configure(text="🤖 CTF2 打题")
             self._render_rail()
             return
-        directions, maxn = self._autosolve_dialog()
-        if not directions:
-            return
-        from core.platform import list_tokens
-        tokens = list_tokens()
-        if not tokens:
-            messagebox.showerror(
-                "CTF2", "没有找到 token（请在 .env 里配 CTF2_AGENT_TOKEN_0/1/2）", parent=self.root)
-            return
-        self._auto_slots = []
-        for i, direction in enumerate(directions):
-            if i >= len(tokens):
-                break
-            folder = f"ctf2_{direction}"
-            if folder not in self.manager.folders:
-                self.manager.new_folder(folder)
-            self._auto_slots.append({
-                "running": True, "direction": direction, "token": tokens[i],
-                "max": maxn, "done": 0, "current": None, "current_meta": None,
-                "phase": "idle", "queue": queue.Queue(),
-            })
-        self.btn_auto.configure(text="⏹ 停止打题")
-        self._render_rail()
-
-    def _autosolve_dialog(self) -> tuple[list[str], int]:
-        win = ctk.CTkToplevel(self.root)
-        win.title("CTF2 自动打题")
-        win.geometry("340x320")
-        win.grab_set()
-        win.attributes("-topmost", True)
-        ctk.CTkLabel(win, text="选择打题方向", font=self.bold).pack(anchor="w", padx=20, pady=(18, 6))
-        dirs = ["web", "crypto", "forensics"]
-        boxes: dict[str, tk.BooleanVar] = {}
-        for d in dirs:
-            var = tk.BooleanVar(value=True)
-            boxes[d] = var
-            ctk.CTkCheckBox(win, text=d, variable=var).pack(anchor="w", padx=20, pady=2)
-        ctk.CTkLabel(win, text="每个方向最多解几道（0=不限）", text_color=MUTED,
-                     font=self.mono_s).pack(anchor="w", padx=20, pady=(14, 4))
-        entry = ctk.CTkEntry(win, width=120, font=self.mono)
-        entry.insert(0, "3")
-        entry.pack(anchor="w", padx=20)
-        result: dict[str, Any] = {}
-
-        def ok() -> None:
-            result["dirs"] = [d for d in dirs if boxes[d].get()]
-            try:
-                result["max"] = max(0, int(entry.get().strip() or "0"))
-            except ValueError:
-                result["max"] = 3
-            win.destroy()
-
-        row = ctk.CTkFrame(win, fg_color="transparent")
-        row.pack(anchor="w", padx=20, pady=16)
-        ctk.CTkButton(row, text="开始", width=100, command=ok).pack(side="left", padx=(0, 8))
-        ctk.CTkButton(row, text="取消", width=100, fg_color="#2a3648",
-                      command=win.destroy).pack(side="left")
-        self.root.wait_window(win)
-        return result.get("dirs", []), result.get("max", 3)
+        self._show_autosolve()
 
     def _autosolve_step(self) -> None:
         """Advance every auto-solve slot (called from _poll)."""
@@ -610,7 +635,7 @@ class ConsoleApp:
             from core.platform import PlatformClient
             client = PlatformClient(token=slot["token"])
             try:
-                nc = client.next_challenges(limit=10)
+                nc = client.next_challenges(limit=10, difficulty=slot.get("difficulty"))
                 items = nc.get("items") or []
                 item = next((it for it in items
                              if str(it.get("category", "")).lower() == slot["direction"]), None)

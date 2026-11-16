@@ -136,6 +136,12 @@ def _custom(spec: dict[str, Any]) -> Built:
         user = f"{attachment_block}Challenge description: {description or '(none given)'}"
         return None, tools, _system_with_techniques(crypto.SYSTEM_PROMPT, "crypto"), user, cleanup_workdir
 
+    if direction == "misc":
+        misc = importlib.import_module("misc.agent")
+        tools = [python_tool(workdir)]
+        user = f"{attachment_block}Challenge description: {description or '(none given)'}"
+        return None, tools, _system_with_techniques(misc.SYSTEM_PROMPT, "misc"), user, cleanup_workdir
+
     if direction == "forensics":
         forensics = importlib.import_module("forensics.agent")
         if workdir is not None:

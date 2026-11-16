@@ -12,8 +12,8 @@ import time
 
 from .platform import PlatformClient, PlatformError
 
-# platform category string -> our custom direction (build_task supports these three).
-SUPPORTED = {"WEB": "web", "CRYPTO": "crypto", "FORENSICS": "forensics"}
+# platform category string -> our custom direction (build_task supports these).
+SUPPORTED = {"WEB": "web", "CRYPTO": "crypto", "MISC": "misc", "FORENSICS": "forensics"}
 
 _ENV_POLLS = 24  # 24 * 5s = up to 2 minutes for a container to become ready
 
