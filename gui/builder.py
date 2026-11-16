@@ -18,9 +18,21 @@ from typing import Any, Callable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.agent import Tool  # noqa: E402
+from knowledge import load_techniques  # noqa: E402
 from tools.sandbox import python_tool  # noqa: E402
 
 Built = tuple[str | None, list[Tool], str, str, Callable[[], None]]
+
+
+def _system_with_techniques(system: str, category: str) -> str:
+    """Append the category's reusable technique cards to the system prompt."""
+    tech = load_techniques(category)
+    if tech:
+        return system + (
+            "\n\n--- Reference: known techniques for this category (study these before "
+            "inventing your own) ---\n" + tech
+        )
+    return system
 
 
 def list_challenges(category: str) -> list[str]:
@@ -116,13 +128,13 @@ def _custom(spec: dict[str, Any]) -> Built:
             client.close()
             cleanup_workdir()
 
-        return None, tools, web.SYSTEM_PROMPT, user, cleanup
+        return None, tools, _system_with_techniques(web.SYSTEM_PROMPT, "web"), user, cleanup
 
     if direction == "crypto":
         crypto = importlib.import_module("crypto.agent")
         tools = [python_tool(workdir)]
         user = f"{attachment_block}Challenge description: {description or '(none given)'}"
-        return None, tools, crypto.SYSTEM_PROMPT, user, cleanup_workdir
+        return None, tools, _system_with_techniques(crypto.SYSTEM_PROMPT, "crypto"), user, cleanup_workdir
 
     if direction == "forensics":
         forensics = importlib.import_module("forensics.agent")
@@ -133,7 +145,7 @@ def _custom(spec: dict[str, Any]) -> Built:
             tools = [python_tool()]
             system = forensics.SYSTEM_PROMPT
         user = f"{attachment_block}Challenge description: {description or '(none given)'}"
-        return None, tools, system, user, cleanup_workdir
+        return None, tools, _system_with_techniques(system, "forensics"), user, cleanup_workdir
 
     raise ValueError(f"unsupported custom direction: {direction}")
 
