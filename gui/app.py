@@ -10,7 +10,9 @@
 Only rendering lives here; all agent logic is in the Session subprocess.
 """
 
+import queue
 import signal
+import threading
 import tkinter as tk
 import tkinter.filedialog as filedialog
 import tkinter.messagebox as messagebox
@@ -61,6 +63,15 @@ class ConsoleApp:
         self._rendered: dict[int, int] = {}
         self._rows: dict[int, ctk.CTkButton] = {}
         self._inherit: dict[str, Any] | None = None
+        self._auto: dict[str, Any] = {
+            "running": False,
+            "max": 3,             # max challenges per auto-solve run (0 = unlimited)
+            "done": 0,
+            "current": None,      # Session currently solving
+            "current_meta": None,  # {challenge_id, ground_id, name, category}
+            "phase": "idle",      # idle | preparing | solving
+            "queue": queue.Queue(),
+        }
 
         self.root = ctk.CTk()
         self.root.title("odele-ctf · supervision console")
@@ -134,11 +145,20 @@ class ConsoleApp:
                      font=ctk.CTkFont(family="Menlo", size=11, weight="bold")).pack(
             anchor="w", padx=16, pady=(16, 4))
         row = ctk.CTkFrame(rail, fg_color="transparent")
-        row.pack(fill="x", padx=10, pady=(0, 8))
+        row.pack(fill="x", padx=10, pady=(0, 6))
         ctk.CTkButton(row, text="＋ Session", command=self._show_setup,
                       height=32, anchor="w").pack(side="left", fill="x", expand=True, padx=(0, 4))
         ctk.CTkButton(row, text="🗂", width=40, height=32, command=self._new_folder,
                       fg_color="#2a3648", hover_color="#35445a").pack(side="left")
+        # auto-solve + search
+        self.btn_auto = ctk.CTkButton(rail, text="🤖 CTF2 打题", command=self._toggle_autosolve,
+                                      height=30, anchor="w", fg_color="#243043",
+                                      hover_color="#35445a")
+        self.btn_auto.pack(fill="x", padx=10, pady=(0, 6))
+        self.search_entry = ctk.CTkEntry(rail, placeholder_text="搜索 session…", height=28,
+                                         font=self.mono_s)
+        self.search_entry.pack(fill="x", padx=10, pady=(0, 8))
+        self.search_entry.bind("<KeyRelease>", lambda _e: self._render_rail())
         self.rail_list = ctk.CTkScrollableFrame(rail, fg_color="transparent")
         self.rail_list.pack(fill="both", expand=True, padx=4)
 
@@ -489,17 +509,135 @@ class ConsoleApp:
         if name and self.manager.new_folder(name):
             self._render_rail()
 
+    # --- CTF2 auto-solve ---------------------------------------------------
+    def _toggle_autosolve(self) -> None:
+        a = self._auto
+        if a["running"]:
+            self._autosolve_stop("已手动停止")
+            return
+        n = simpledialog.askinteger(
+            "CTF2 自动打题", "最多解几道题？（0 = 不限）",
+            initialvalue=3, minvalue=0, parent=self.root,
+        )
+        if n is None:
+            return
+        if "ctf2" not in self.manager.folders:
+            self.manager.new_folder("ctf2")
+        a.update({"running": True, "max": n, "done": 0, "current": None,
+                  "current_meta": None, "phase": "idle", "queue": queue.Queue()})
+        self.btn_auto.configure(text="⏹ 停止打题")
+        self._render_rail()
+
+    def _autosolve_step(self) -> None:
+        """Advance the auto-solve state machine (called from _poll)."""
+        a = self._auto
+        if not a["running"]:
+            return
+        if a["phase"] == "idle":
+            a["phase"] = "preparing"
+            threading.Thread(target=self._autosolve_worker, args=(a["queue"],), daemon=True).start()
+        elif a["phase"] == "preparing":
+            try:
+                result = a["queue"].get_nowait()
+            except queue.Empty:
+                return
+            if isinstance(result, tuple) and result[0] == "spec":
+                spec, meta = result[1]
+                session = self.manager.new_session(spec, meta["name"], meta["category"], folder="ctf2")
+                a["current"] = session
+                a["current_meta"] = meta
+                a["phase"] = "solving"
+                self.add_session(session)
+            else:
+                msg = result[1] if isinstance(result, tuple) else "打题结束"
+                self._autosolve_stop(msg)
+        elif a["phase"] == "solving":
+            session = a["current"]
+            if session is not None and session.state["done"]:
+                self._autosolve_submit()
+
+    def _autosolve_worker(self, q: "queue.Queue") -> None:
+        from core.autosolve import prepare_challenge
+        from core.platform import PlatformClient
+        client = PlatformClient()
+        try:
+            nc = client.next_challenges(limit=5)
+            items = nc.get("items") or []
+            if not items:
+                q.put(("stop", "没有未解的题了"))
+                return
+            for item in items:
+                try:
+                    result = prepare_challenge(client, item)
+                except Exception as e:
+                    q.put(("error", f"{item.get('name')}: {e}"))
+                    return
+                if result is not None:
+                    q.put(("spec", result))
+                    return
+            q.put(("stop", "剩余题都不支持（仅 web/crypto/forensics）"))
+        except Exception as e:
+            q.put(("error", str(e)))
+        finally:
+            client.close()
+
+    def _autosolve_submit(self) -> None:
+        from core.platform import PlatformClient, PlatformError
+        a = self._auto
+        session = a["current"]
+        meta = a["current_meta"]
+        a["current"] = None
+        a["current_meta"] = None
+        client = PlatformClient()
+        note = ""
+        try:
+            flag = session.state.get("flag") if session else None
+            if flag:
+                try:
+                    client.submit_flag(meta["ground_id"], meta["challenge_id"], flag)
+                    note = f"solved: {flag}"
+                except PlatformError as e:
+                    note = f"submit failed: {e.code} {e.message}"
+            else:
+                note = "no flag found"
+            try:
+                client.log_note(meta["challenge_id"], "result", note[:2000])
+            except PlatformError:
+                pass
+        finally:
+            client.close()
+        a["done"] += 1
+        if a["max"] and a["done"] >= a["max"]:
+            self._autosolve_stop(f"已达上限（{a['done']} 道）")
+        else:
+            a["phase"] = "idle"
+
+    def _autosolve_stop(self, msg: str) -> None:
+        self._auto["running"] = False
+        self._auto["phase"] = "idle"
+        self._auto["current"] = None
+        self._auto["current_meta"] = None
+        self.btn_auto.configure(text="🤖 CTF2 打题")
+        print(f"[autosolve] {msg}")
+
     def _render_rail(self) -> None:
         for child in self.rail_list.winfo_children():
             child.destroy()
         self._rows.clear()
+        query = ""
+        if hasattr(self, "search_entry"):
+            query = (self.search_entry.get() or "").strip().lower()
+
+        def matches(s: Session) -> bool:
+            return (not query) or query in s.title.lower() or query in s.category.lower()
+
         for folder in self.manager.folders:
             self._folder_label(folder)
             for s in self.manager.sessions:
-                if s.folder == folder:
+                if s.folder == folder and matches(s):
                     self._session_button(s, indent=True)
         for s in self.manager.sessions:
-            if s.folder is None:
+            if s.folder is None and matches(s):
                 self._session_button(s, indent=False)
 
     def _folder_label(self, folder: str) -> None:
@@ -781,6 +919,7 @@ class ConsoleApp:
                     self._render(ev)
                 self._rendered[active.id] = len(active.transcript)
                 self._refresh_panel()
+            self._autosolve_step()
         except Exception:
             # A malformed event must never stop polling, or the console silently freezes.
             import traceback
