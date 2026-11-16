@@ -101,33 +101,121 @@ class ConsoleApp:
     def _build(self) -> None:
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=0)  # rail: fixed 230px
-        self.root.grid_columnconfigure(1, weight=1)  # paned (center + right) fills
+        self.root.grid_columnconfigure(1, weight=1)  # main area fills
         self._build_rail()
-        self._build_paned()
+        self._build_main()
 
-    def _build_paned(self) -> None:
-        self.paned = tk.PanedWindow(self.root, orient="horizontal", sashwidth=6,
-                                    bd=0, relief="flat", bg="#20283a")
-        self.paned.grid(row=0, column=1, sticky="nsew")
-        self._build_center()
-        self._build_right()
-        self.paned.add(self.center_wrap, minsize=320, stretch="always")
-        self.paned.add(self.right_panel, minsize=160, width=290, stretch="never")
-        # The setup screen is the initial view; hide the right panel until a session is active.
-        self.paned.forget(self.right_panel)
-        self._right_visible = False
+    def _build_main(self) -> None:
+        self.main = ctk.CTkFrame(self.root, corner_radius=0, fg_color="#0f1218")
+        self.main.grid(row=0, column=1, sticky="nsew")
+        self.main.grid_columnconfigure(0, weight=1)
+        self.main.grid_rowconfigure(1, weight=1)
 
-    def _set_right_panel(self, show: bool) -> None:
-        """Show or hide the right-hand status panel (hidden while the setup form is up)."""
-        if not hasattr(self, "right_panel"):
-            return
-        if show == getattr(self, "_right_visible", False):
-            return
-        if show:
-            self.paned.add(self.right_panel, minsize=160, width=290, stretch="never")
-        else:
-            self.paned.forget(self.right_panel)
-        self._right_visible = show
+        self.center_head = ctk.CTkLabel(self.main, text="", text_color=FG, font=self.bold, anchor="w")
+        self.center_head.grid(row=0, column=0, sticky="ew", padx=20, pady=(14, 6))
+
+        # the session view (status + tabs + flag + suggestion), shown when a session is active
+        self.session_view = self._build_session_view(self.main)
+        self.session_view.grid(row=1, column=0, sticky="nsew")
+        self.session_view.grid_remove()
+
+        # the forms, shown when no session is active
+        self.setup = self._build_setup(self.main)
+        self.setup.grid(row=1, column=0, sticky="nsew")
+        self.autosolve = self._build_autosolve(self.main)
+        self.autosolve.grid(row=1, column=0, sticky="nsew")
+        self.autosolve.grid_remove()
+
+        self._show_setup()
+
+    def _build_session_view(self, parent: ctk.CTkFrame) -> ctk.CTkFrame:
+        view = ctk.CTkFrame(parent, fg_color="transparent")
+        view.grid_columnconfigure(0, weight=1)
+        view.grid_rowconfigure(2, weight=1)
+
+        # status row
+        top = ctk.CTkFrame(view, fg_color="transparent")
+        top.grid(row=0, column=0, sticky="ew", padx=16, pady=(2, 2))
+        self.big_status = ctk.CTkLabel(top, text="○ idle", font=self.bold, text_color=MUTED)
+        self.big_status.pack(side="left", anchor="w")
+        self.lbl_timer = ctk.CTkLabel(top, text="⏱ 0s", text_color=MUTED, font=self.mono)
+        self.lbl_timer.pack(side="left", padx=(12, 0))
+        self.lbl_counts = ctk.CTkLabel(top, text="replies 0 · tool calls 0", font=self.mono)
+        self.lbl_counts.pack(side="left", padx=(12, 0))
+        self.lbl_tools = ctk.CTkLabel(top, text="", text_color=MUTED, font=self.mono_s)
+        self.lbl_tools.pack(side="left", padx=(12, 0))
+        self.btn_stop = ctk.CTkButton(top, text="■ Stop", width=72, height=30,
+                                      fg_color="#5a2b2b", hover_color="#703636",
+                                      command=self._stop_active)
+        self.btn_stop.pack(side="right")
+        self.btn_delete = ctk.CTkButton(top, text="🗑", width=40, height=30,
+                                        fg_color="#5a2b2b", hover_color="#703636",
+                                        state="disabled", command=self._delete_active)
+        self.btn_delete.pack(side="right", padx=(0, 4))
+
+        # tab bar: 对话 / Findings / Thinking / 题解
+        tabbar = ctk.CTkFrame(view, fg_color="transparent")
+        tabbar.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 4))
+        self.btn_tab_chat = ctk.CTkButton(tabbar, text="对话", width=64, height=26,
+                                          command=lambda: self._switch_tab("chat"))
+        self.btn_tab_chat.pack(side="left", padx=(0, 4))
+        self.btn_tab_findings = ctk.CTkButton(tabbar, text="Findings", width=72, height=26,
+                                              command=lambda: self._switch_tab("findings"))
+        self.btn_tab_findings.pack(side="left", padx=(0, 4))
+        self.btn_tab_think = ctk.CTkButton(tabbar, text="Thinking", width=72, height=26,
+                                           command=lambda: self._switch_tab("thinking"))
+        self.btn_tab_think.pack(side="left", padx=(0, 4))
+        self.btn_tab_writeup = ctk.CTkButton(tabbar, text="题解", width=56, height=26,
+                                             command=lambda: self._switch_tab("writeup"))
+        self.btn_tab_writeup.pack(side="left")
+
+        # tab content
+        self.tab_content = ctk.CTkFrame(view, fg_color="transparent")
+        self.tab_content.grid(row=2, column=0, sticky="nsew", padx=16)
+
+        self.frame_chat = ctk.CTkFrame(self.tab_content, fg_color="transparent")
+        self.chat = ctk.CTkScrollableFrame(self.frame_chat, fg_color="transparent")
+        self.chat.pack(fill="both", expand=True)
+
+        self.frame_findings = ctk.CTkFrame(self.tab_content, fg_color="transparent")
+        self.txt_findings = ctk.CTkTextbox(self.frame_findings, font=self.mono_s, wrap="word")
+        self.txt_findings.pack(fill="both", expand=True)
+        self._wheel_scroll(self.txt_findings)
+
+        self.frame_think = ctk.CTkFrame(self.tab_content, fg_color="transparent")
+        self.txt_think = ctk.CTkTextbox(self.frame_think, font=self.mono_s, wrap="word")
+        self.txt_think.pack(fill="both", expand=True)
+        self._wheel_scroll(self.txt_think)
+
+        self.frame_writeup = ctk.CTkFrame(self.tab_content, fg_color="transparent")
+        self.txt_writeup = ctk.CTkTextbox(self.frame_writeup, font=self.mono_s, wrap="word")
+        self.txt_writeup.pack(fill="both", expand=True)
+        self._wheel_scroll(self.txt_writeup)
+
+        # flag row
+        flag_row = ctk.CTkFrame(view, fg_color="transparent")
+        flag_row.grid(row=3, column=0, sticky="ew", padx=16, pady=(4, 4))
+        ctk.CTkLabel(flag_row, text="FLAG", text_color=MUTED,
+                     font=ctk.CTkFont(family="Menlo", size=11, weight="bold")).pack(side="left")
+        self.lbl_flag = ctk.CTkLabel(flag_row, text="—", text_color="#79d98a", font=self.bold,
+                                     anchor="w", justify="left", wraplength=400)
+        self.lbl_flag.pack(side="left", padx=(8, 0), expand=True, fill="x")
+        self._copy_btn(flag_row, lambda: self._copy(self._flag_now()))
+
+        # suggestion bottom
+        self.bottom = ctk.CTkFrame(view, corner_radius=0, fg_color="#141822")
+        self.bottom.grid(row=4, column=0, sticky="ew")
+        self.suggestion_entry = ctk.CTkEntry(
+            self.bottom, placeholder_text="after it finishes: give a suggestion for the next attempt…",
+            font=self.mono, height=38)
+        self.suggestion_entry.pack(side="left", fill="x", expand=True, padx=(12, 8), pady=10)
+        self.suggestion_entry.bind("<Return>", lambda _e: self._continue_with_suggestion())
+        ctk.CTkButton(self.bottom, text="Continue with suggestion",
+                      command=self._continue_with_suggestion, width=190, height=38).pack(
+            side="left", padx=(0, 12), pady=10)
+
+        self._switch_tab("chat")
+        return view
 
     def _build_rail(self) -> None:
         rail = ctk.CTkFrame(self.root, width=230, corner_radius=0)
@@ -153,35 +241,6 @@ class ConsoleApp:
         self.search_entry.bind("<KeyRelease>", lambda _e: self._render_rail())
         self.rail_list = ctk.CTkScrollableFrame(rail, fg_color="transparent")
         self.rail_list.pack(fill="both", expand=True, padx=4)
-
-    def _build_center(self) -> None:
-        wrap = ctk.CTkFrame(self.paned, corner_radius=0, fg_color="#0f1218")
-        self.center_wrap = wrap
-        wrap.grid_rowconfigure(1, weight=1)
-        wrap.grid_columnconfigure(0, weight=1)
-        self.center_head = ctk.CTkLabel(wrap, text="", text_color=FG, font=self.bold, anchor="w")
-        self.center_head.grid(row=0, column=0, sticky="ew", padx=20, pady=(14, 6))
-
-        self.chat = ctk.CTkScrollableFrame(wrap, fg_color="transparent")
-        self.chat.grid(row=1, column=0, sticky="nsew", padx=8)
-        self.setup = self._build_setup(wrap)
-        self.setup.grid(row=1, column=0, sticky="nsew")
-        self.autosolve = self._build_autosolve(wrap)
-        self.autosolve.grid(row=1, column=0, sticky="nsew")
-        self.autosolve.grid_remove()
-
-        self.bottom = ctk.CTkFrame(wrap, corner_radius=0, fg_color="#141822")
-        self.bottom.grid(row=2, column=0, sticky="ew")
-        self.suggestion_entry = ctk.CTkEntry(
-            self.bottom, placeholder_text="after it finishes: give a suggestion for the next attempt…",
-            font=self.mono, height=38)
-        self.suggestion_entry.pack(side="left", fill="x", expand=True, padx=(12, 8), pady=10)
-        self.suggestion_entry.bind("<Return>", lambda _e: self._continue_with_suggestion())
-        ctk.CTkButton(self.bottom, text="Continue with suggestion",
-                      command=self._continue_with_suggestion, width=190, height=38).pack(
-            side="left", padx=(0, 12), pady=10)
-
-        self._show_setup()
 
     def _build_setup(self, parent: ctk.CTkFrame) -> ctk.CTkFrame:
         wrap = ctk.CTkFrame(parent, fg_color="transparent")
@@ -288,10 +347,8 @@ class ConsoleApp:
 
     def _show_autosolve(self) -> None:
         self.manager.active = None
-        self._set_right_panel(False)
         self.center_head.configure(text="CTF2 自动打题")
-        self.chat.grid_remove()
-        self.bottom.grid_remove()
+        self.session_view.grid_remove()
         self.setup.grid_remove()
         self.autosolve.grid()
         self.auto_hint.configure(text="")
@@ -325,10 +382,10 @@ class ConsoleApp:
             })
         self.btn_auto.configure(text="⏹ 停止打题")
         self._render_rail()
-        # switch center to the chat; sessions auto-select as they spawn
+        # show the (empty) session view; sessions auto-select as they spawn
         self.autosolve.grid_remove()
-        self.chat.grid()
-        self._set_right_panel(True)
+        self.session_view.grid()
+        self._switch_tab("chat")
 
     def _on_direction_changed(self) -> None:
         """Show the URL section only for web targets; crypto/forensics don't need a URL."""
@@ -391,14 +448,13 @@ class ConsoleApp:
 
     def _show_setup(self) -> None:
         self.manager.active = None
-        self._set_right_panel(False)
         for btn in self._rows.values():
             btn.configure(fg_color="transparent")
         if hasattr(self, "btn_delete"):
             self.btn_delete.configure(state="disabled")
         self.center_head.configure(text="New session")
-        self.chat.grid_remove()
-        self.bottom.grid_remove()
+        self.session_view.grid_remove()
+        self.autosolve.grid_remove()
         self.setup.grid()
         self._reset_setup()
         self._refresh_folder_options()
@@ -460,73 +516,6 @@ class ConsoleApp:
         self.add_session(self.manager.new_session(spec, title, category, folder=folder,
                                                   inherit=inherit))
 
-    def _build_right(self) -> None:
-        self.right_panel = ctk.CTkFrame(self.paned, width=290, corner_radius=0)
-        panel = self.right_panel
-        pad = {"anchor": "w", "padx": 16}
-
-        top = ctk.CTkFrame(panel, fg_color="transparent")
-        top.pack(fill="x", padx=16, pady=(14, 0))
-        self.big_status = ctk.CTkLabel(top, text="○ idle", font=self.bold, text_color=MUTED)
-        self.big_status.pack(side="left", anchor="w")
-        self.btn_stop = ctk.CTkButton(top, text="■ Stop", width=72, height=30,
-                                      fg_color="#5a2b2b", hover_color="#703636",
-                                      command=self._stop_active)
-        self.btn_stop.pack(side="right")
-        self.btn_delete = ctk.CTkButton(top, text="🗑", width=40, height=30,
-                                        fg_color="#5a2b2b", hover_color="#703636",
-                                        state="disabled", command=self._delete_active)
-        self.btn_delete.pack(side="right", padx=(0, 4))
-        self.lbl_timer = ctk.CTkLabel(panel, text="⏱ 0s", text_color=MUTED, font=self.mono)
-        self.lbl_timer.pack(**pad, pady=(2, 6))
-        self.lbl_counts = ctk.CTkLabel(panel, text="replies 0 · tool calls 0", font=self.mono)
-        self.lbl_counts.pack(**pad)
-        self.lbl_tools = ctk.CTkLabel(panel, text="", text_color=MUTED, font=self.mono_s,
-                                      justify="left", wraplength=250)
-        self.lbl_tools.pack(**pad, pady=(2, 12))
-
-        # Findings / Thinking / 题解 as tabs (custom toggle — CTkTabview segfaults on macOS).
-        tabbar = ctk.CTkFrame(panel, fg_color="transparent")
-        tabbar.pack(fill="x", padx=16, pady=(0, 4))
-        self.btn_tab_findings = ctk.CTkButton(tabbar, text="Findings", width=72, height=26,
-                                              command=lambda: self._switch_tab("findings"))
-        self.btn_tab_findings.pack(side="left", padx=(0, 4))
-        self.btn_tab_think = ctk.CTkButton(tabbar, text="Thinking", width=72, height=26,
-                                           command=lambda: self._switch_tab("thinking"))
-        self.btn_tab_think.pack(side="left", padx=(0, 4))
-        self.btn_tab_writeup = ctk.CTkButton(tabbar, text="题解", width=56, height=26,
-                                             command=lambda: self._switch_tab("writeup"))
-        self.btn_tab_writeup.pack(side="left")
-
-        self.tab_content = ctk.CTkFrame(panel, fg_color="transparent")
-        self.tab_content.pack(fill="both", expand=True, padx=16, pady=(0, 12))
-
-        self.frame_findings = ctk.CTkFrame(self.tab_content, fg_color="transparent")
-        self.frame_findings.pack(fill="both", expand=True)
-        self.txt_findings = ctk.CTkTextbox(self.frame_findings, font=self.mono_s, wrap="word")
-        self.txt_findings.pack(fill="both", expand=True)
-        self._wheel_scroll(self.txt_findings)
-
-        self.frame_think = ctk.CTkFrame(self.tab_content, fg_color="transparent")
-        self.txt_think = ctk.CTkTextbox(self.frame_think, font=self.mono_s, wrap="word")
-        self.txt_think.pack(fill="both", expand=True)
-        self._wheel_scroll(self.txt_think)
-
-        self.frame_writeup = ctk.CTkFrame(self.tab_content, fg_color="transparent")
-        self.txt_writeup = ctk.CTkTextbox(self.frame_writeup, font=self.mono_s, wrap="word")
-        self.txt_writeup.pack(fill="both", expand=True)
-        self._wheel_scroll(self.txt_writeup)
-        self._switch_tab("findings")
-
-        flag_row = ctk.CTkFrame(panel, fg_color="transparent")
-        flag_row.pack(fill="x", padx=16, pady=(4, 16))
-        ctk.CTkLabel(flag_row, text="FLAG", text_color=MUTED,
-                     font=ctk.CTkFont(family="Menlo", size=11, weight="bold")).pack(side="left")
-        self.lbl_flag = ctk.CTkLabel(flag_row, text="—", text_color="#79d98a", font=self.bold,
-                                     anchor="w", justify="left", wraplength=200)
-        self.lbl_flag.pack(side="left", padx=(8, 0), expand=True, fill="x")
-        self._copy_btn(flag_row, lambda: self._copy(self._flag_now()))
-
     def _flag_now(self) -> str:
         a = self.manager.active
         return (a.state.get("flag") or "") if a else ""
@@ -563,20 +552,22 @@ class ConsoleApp:
 
     def _switch_tab(self, name: str) -> None:
         self._active_tab = name
-        for frame in (self.frame_findings, self.frame_think, self.frame_writeup):
+        for frame in (self.frame_chat, self.frame_findings, self.frame_think, self.frame_writeup):
             frame.pack_forget()
-        self.btn_tab_findings.configure(fg_color="transparent")
-        self.btn_tab_think.configure(fg_color="transparent")
-        self.btn_tab_writeup.configure(fg_color="transparent")
+        for btn in (self.btn_tab_chat, self.btn_tab_findings, self.btn_tab_think, self.btn_tab_writeup):
+            btn.configure(fg_color="transparent")
         if name == "findings":
             self.frame_findings.pack(fill="both", expand=True)
             self.btn_tab_findings.configure(fg_color="#2a3648")
         elif name == "thinking":
             self.frame_think.pack(fill="both", expand=True)
             self.btn_tab_think.configure(fg_color="#2a3648")
-        else:
+        elif name == "writeup":
             self.frame_writeup.pack(fill="both", expand=True)
             self.btn_tab_writeup.configure(fg_color="#2a3648")
+        else:
+            self.frame_chat.pack(fill="both", expand=True)
+            self.btn_tab_chat.configure(fg_color="#2a3648")
 
     # --- sessions / folders ------------------------------------------------
     def _new_folder(self) -> None:
@@ -760,9 +751,10 @@ class ConsoleApp:
 
     def select(self, session: Session) -> None:
         self.manager.active = session
-        self._set_right_panel(True)
+        self.autosolve.grid_remove()
         self.setup.grid_remove()
-        self.chat.grid()
+        self.session_view.grid()
+        self._switch_tab("chat")
         self.bottom.grid() if session.state["done"] else self.bottom.grid_remove()
         for sid, btn in self._rows.items():
             btn.configure(fg_color=RAIL_SEL if sid == session.id else "transparent")
