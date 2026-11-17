@@ -824,11 +824,14 @@ class ConsoleApp:
             box.tag_configure("center", justify="center")
             box.tag_add("center", "1.0", "end")
         box.configure(state="disabled")
+        box.pack(anchor="center" if center else "w", padx=10, pady=6)
+        # count display lines after packing so wrapping uses the real width (displaylines
+        # returns the character count before the widget is mapped)
+        box.update_idletasks()
         lines = box.count("1.0", "end", "displaylines")
         if isinstance(lines, tuple):
             lines = lines[0]
         box.configure(height=max(1, int(lines)))
-        box.pack(fill="x", padx=10, pady=6)
 
     def _scroll_bottom(self) -> None:
         try:
