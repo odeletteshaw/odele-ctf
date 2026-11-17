@@ -46,8 +46,10 @@ FOLDER_FG = "#9aa5b5"
 STATUS_COLORS = {
     "running": "#ffd166", "solved": "#79d98a", "failed": "#ff6b6b",
     "error": "#ff6b6b", "idle": "#8b94a7", "cancelled": "#c98a3d",
+    "preparing": "#8b94a7",
 }
-STATUS_GLYPH = {"solved": "✓", "failed": "✗", "error": "⚠", "idle": "○", "cancelled": "■"}
+STATUS_GLYPH = {"solved": "✓", "failed": "✗", "error": "⚠", "idle": "○",
+                "cancelled": "■", "preparing": "…"}
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 MAX_OUT = 1400
 MAX_BUBBLE = 2000
@@ -604,16 +606,37 @@ class ConsoleApp:
                 result = slot["queue"].get_nowait()
             except queue.Empty:
                 return
-            if isinstance(result, tuple) and result[0] == "spec":
+            kind = result[0] if isinstance(result, tuple) else None
+            if kind == "placeholder":
+                meta = result[1]
+                pending = self.manager.new_pending_session(
+                    {"kind": "custom", "category": slot["direction"], "urls": [],
+                     "description": "", "attachments": [], "flag_prefix": "flag"},
+                    meta["name"], slot["direction"], folder=f"ctf2_{slot['direction']}")
+                slot["pending"] = pending
+                self.add_session(pending)
+            elif kind == "spec":
                 spec, meta = result[1]
-                session = self.manager.new_session(
-                    spec, meta["name"], meta["category"], folder=f"ctf2_{slot['direction']}")
-                slot["current"] = session
-                slot["current_meta"] = meta
+                pending = slot.get("pending")
+                if pending is not None:
+                    self.manager.start_pending_session(pending, spec)
+                    slot["pending"] = None
+                    slot["current"] = pending
+                    slot["current_meta"] = meta
+                else:
+                    session = self.manager.new_session(
+                        spec, meta["name"], meta["category"], folder=f"ctf2_{slot['direction']}")
+                    slot["current"] = session
+                    slot["current_meta"] = meta
+                    self.add_session(session)
                 slot["phase"] = "solving"
-                self.add_session(session)
             else:
                 msg = result[1] if isinstance(result, tuple) else "打题结束"
+                pending = slot.get("pending")
+                if pending is not None:
+                    pending.state["status"] = "error"
+                    pending.state["done"] = True
+                    slot["pending"] = None
                 self._stop_slot(slot, msg)
         elif slot["phase"] == "solving":
             session = slot["current"]
@@ -633,6 +656,8 @@ class ConsoleApp:
                 if item is None:
                     slot["queue"].put(("stop", f"{slot['direction']} 没有未解的题了"))
                     return
+                # show a placeholder session right away while we download/start the env
+                slot["queue"].put(("placeholder", {"name": item.get("name") or slot["direction"]}))
                 try:
                     result = prepare_challenge(client, item)
                 except Exception as e:
@@ -781,18 +806,19 @@ class ConsoleApp:
         bubble = ctk.CTkFrame(holder, fg_color=bg, corner_radius=12)
         bubble.pack(fill="x" if full else None, anchor=anchor,
                     padx=(0, 70) if anchor == "w" and not full else ((70, 0) if anchor == "e" else 0))
-        self._bubble_text(bubble, text, text_color=text_color, font=font or self.mono,
+        self._bubble_text(bubble, text, bg=bg, text_color=text_color, font=font or self.mono,
                           wrap_chars=80 if not full else 92, center=(anchor == "center"))
         self._scroll_bottom()
 
-    def _bubble_text(self, parent: ctk.CTkFrame, text: str, *, text_color: str,
+    def _bubble_text(self, parent: ctk.CTkFrame, text: str, *, bg: str, text_color: str,
                      font: Any, wrap_chars: int, center: bool = False) -> None:
         """A read-only, selectable text widget sized to fit the bubble (so text is copyable)."""
         fam = font.cget("family") if hasattr(font, "cget") else "Menlo"
         size = font.cget("size") if hasattr(font, "cget") else 12
         box = tk.Text(parent, wrap="word", width=wrap_chars, bd=0, relief="flat",
-                      highlightthickness=0, bg=parent.cget("fg_color"), fg=text_color,
-                      font=(fam, size), cursor="xterm")
+                      highlightthickness=0, bg=bg, fg=text_color, font=(fam, size),
+                      cursor="xterm", padx=0, pady=0, insertwidth=0,
+                      selectbackground="#3d4f73", selectforeground="#ffffff")
         box.insert("1.0", text)
         if center:
             box.tag_configure("center", justify="center")
@@ -802,7 +828,7 @@ class ConsoleApp:
         if isinstance(lines, tuple):
             lines = lines[0]
         box.configure(height=max(1, int(lines)))
-        box.pack(fill="x", padx=8, pady=5)
+        box.pack(fill="x", padx=10, pady=6)
 
     def _scroll_bottom(self) -> None:
         try:

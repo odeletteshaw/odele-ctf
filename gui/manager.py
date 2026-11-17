@@ -221,6 +221,24 @@ class Manager:
         self.save()
         return session
 
+    def new_pending_session(self, spec: dict[str, Any], title: str, category: str,
+                            folder: str | None = None) -> Session:
+        """Create a placeholder session that is visible but not yet solving; its spec can be
+        filled in and started later with start_solve()."""
+        session = Session(spec, title, category, folder=folder)
+        session.state["status"] = "preparing"
+        self.sessions.append(session)
+        self.active = session
+        self.save()
+        return session
+
+    def start_pending_session(self, session: Session, spec: dict[str, Any]) -> None:
+        """Give a placeholder session its real spec and start solving it."""
+        session.spec = spec
+        session.state["status"] = "running"
+        session.start()
+        self.save()
+
     def rename(self, session: Session, title: str) -> None:
         title = title.strip()
         if title:
