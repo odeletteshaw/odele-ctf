@@ -212,6 +212,21 @@ class Manager:
             return True
         return False
 
+    def delete_folder(self, name: str) -> None:
+        """Delete a folder and all its sessions."""
+        if name not in self.folders:
+            return
+        self.folders.remove(name)
+        doomed = [s for s in self.sessions if s.folder == name]
+        for s in doomed:
+            if s.is_running():
+                s.stop()
+            if s in self.sessions:
+                self.sessions.remove(s)
+            if self.active is s:
+                self.active = None
+        self.save()
+
     def new_session(self, spec: dict[str, Any], title: str, category: str,
                     folder: str | None = None, inherit: Session | None = None) -> Session:
         session = Session(spec, title, category, folder=folder, inherit=inherit)

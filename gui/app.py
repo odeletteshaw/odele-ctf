@@ -742,6 +742,28 @@ class ConsoleApp:
         lbl = ctk.CTkLabel(self.rail_list, text=f"▾  {folder}", text_color=FOLDER_FG,
                            anchor="w", font=ctk.CTkFont(family="Menlo", size=11, weight="bold"))
         lbl.pack(fill="x", padx=16, pady=(10, 2))
+        lbl.bind("<Button-3>", lambda e, f=folder: self._folder_menu(e, f))
+
+    def _folder_menu(self, event: Any, folder: str) -> None:
+        menu = tk.Menu(self.root, tearoff=0, bg="#141822", fg=FG,
+                       activebackground=RAIL_SEL, activeforeground=FG)
+        menu.add_command(label="🗑 删除文件夹", command=lambda: self._delete_folder(folder))
+        menu.tk_popup(event.x_root, event.y_root)
+
+    def _delete_folder(self, folder: str) -> None:
+        n = len([s for s in self.manager.sessions if s.folder == folder])
+        if not messagebox.askyesno(
+            "Delete folder",
+            f"删除文件夹 “{folder}” 及其 {n} 个 session？此操作不可撤销。",
+            parent=self.root,
+        ):
+            return
+        self.manager.delete_folder(folder)
+        self._render_rail()
+        if self.manager.sessions:
+            self.select(self.manager.sessions[0])
+        else:
+            self._show_setup()
 
     def _session_button(self, session: Session, indent: bool) -> None:
         btn = ctk.CTkButton(self.rail_list, text=f"○  {session.title}", anchor="w",
