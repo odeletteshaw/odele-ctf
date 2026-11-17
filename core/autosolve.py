@@ -33,6 +33,7 @@ def _access_urls(env: dict) -> list[str]:
 def _wait_environment(client: PlatformClient, ground_id, challenge_id) -> list[str]:
     """Start (or reuse) a challenge environment and wait for its access URL(s)."""
     restarts = 0
+    none_streak = 0
     try:
         client.start_environment(ground_id, challenge_id)
     except PlatformError:
@@ -51,9 +52,16 @@ def _wait_environment(client: PlatformClient, ground_id, challenge_id) -> list[s
                 client.start_environment(ground_id, challenge_id)
             except PlatformError:
                 pass
-        elif status == "none":
-            # start failed (e.g. environment quota already used by another challenge) — give up
-            return []
+            none_streak = 0
+            continue
+        if status == "none":
+            # "none" is also the brief state right after start (before "starting"); only
+            # give up after it persists for a few polls — start genuinely failed then.
+            none_streak += 1
+            if none_streak >= 3:
+                return []
+        else:
+            none_streak = 0
         time.sleep(5)
     return []
 
