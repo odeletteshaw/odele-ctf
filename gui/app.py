@@ -53,7 +53,7 @@ STATUS_GLYPH = {"solved": "✓", "failed": "✗", "error": "⚠", "idle": "○",
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 MAX_OUT = 1400
 MAX_BUBBLE = 2000
-MAX_RENDER_EVENTS = 20
+MAX_RENDER_EVENTS = 200
 WRAP = 560
 
 
@@ -849,14 +849,11 @@ class ConsoleApp:
             box.tag_configure("center", justify="center")
             box.tag_add("center", "1.0", "end")
         box.configure(state="disabled")
+        # estimate the wrapped line count from the text (monospace => deterministic), so we
+        # avoid a per-bubble update_idletasks() that made large transcripts take ~100s to render
+        lines = sum(max(1, (len(part) + wrap_chars - 1) // wrap_chars) for part in text.split("\n"))
+        box.configure(height=max(1, lines + 1))
         box.pack(anchor="center" if center else "w", padx=10, pady=6)
-        # count display lines after packing so wrapping uses the real width (displaylines
-        # returns the character count before the widget is mapped)
-        box.update_idletasks()
-        lines = box.count("1.0", "end", "displaylines")
-        if isinstance(lines, tuple):
-            lines = lines[0]
-        box.configure(height=max(1, int(lines)))
 
     def _scroll_bottom(self) -> None:
         try:

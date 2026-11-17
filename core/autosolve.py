@@ -31,38 +31,50 @@ def _access_urls(env: dict) -> list[str]:
 
 
 def _wait_environment(client: PlatformClient, ground_id, challenge_id) -> list[str]:
-    """Start (or reuse) a challenge environment and wait for its access URL(s)."""
-    restarts = 0
-    none_streak = 0
-    try:
-        client.start_environment(ground_id, challenge_id)
-    except PlatformError:
-        pass  # may already be running; fall through to polling
-    for _ in range(_ENV_POLLS):
+    """Start (or reuse) a challenge environment and wait for its access URL(s), retrying
+    once if the first start never becomes ready."""
+    for attempt in range(2):
+        restarts = 0
+        none_streak = 0
+        ready = None
         try:
-            env = client.get_environment(ground_id, challenge_id)
+            client.start_environment(ground_id, challenge_id)
         except PlatformError:
-            env = {}
-        if env.get("access_ready"):
-            return _access_urls(env)
-        status = env.get("status")
-        if status == "error" and restarts < 1:
-            restarts += 1
+            pass  # may already be running; fall through to polling
+        for _ in range(_ENV_POLLS):
             try:
-                client.start_environment(ground_id, challenge_id)
+                env = client.get_environment(ground_id, challenge_id)
             except PlatformError:
-                pass
-            none_streak = 0
-            continue
-        if status == "none":
-            # "none" is also the brief state right after start (before "starting"); only
-            # give up after it persists for a few polls — start genuinely failed then.
-            none_streak += 1
-            if none_streak >= 3:
-                return []
-        else:
-            none_streak = 0
-        time.sleep(5)
+                env = {}
+            if env.get("access_ready"):
+                ready = _access_urls(env)
+                break
+            status = env.get("status")
+            if status == "error" and restarts < 1:
+                restarts += 1
+                try:
+                    client.start_environment(ground_id, challenge_id)
+                except PlatformError:
+                    pass
+                none_streak = 0
+                continue
+            if status == "none":
+                # "none" is also the brief state right after start (before "starting"); only
+                # give up after it persists for a few polls — start genuinely failed then.
+                none_streak += 1
+                if none_streak >= 3:
+                    break
+            else:
+                none_streak = 0
+            time.sleep(5)
+        if ready:
+            return ready
+        # never became ready — clean up and retry once before giving up
+        try:
+            client.delete_environment(ground_id, challenge_id)
+        except PlatformError:
+            pass
+        time.sleep(2)
     return []
 
 
@@ -86,6 +98,9 @@ def prepare_challenge(client: PlatformClient, item: dict) -> tuple[dict, dict] |
 
     if challenge.get("has_container"):
         urls = _wait_environment(client, ground_id, challenge_id)
+        if not urls:
+            # Don't start a session with no target — it would just "run" and fail.
+            raise RuntimeError("container environment did not become ready")
 
     spec = {
         "kind": "custom",
