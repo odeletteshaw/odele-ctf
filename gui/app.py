@@ -109,7 +109,7 @@ class ConsoleApp:
         self.paned.grid(row=0, column=0, sticky="nsew")
         self._build_rail()
         self._build_main()
-        self.paned.add(self.rail, minsize=160, width=230, stretch="never")
+        self.paned.add(self.rail, minsize=180, width=300, stretch="never")
         self.paned.add(self.main, minsize=420, stretch="always")
 
     def _build_main(self) -> None:
@@ -224,7 +224,7 @@ class ConsoleApp:
         return view
 
     def _build_rail(self) -> None:
-        self.rail = ctk.CTkFrame(self.paned, width=230, corner_radius=0)
+        self.rail = ctk.CTkFrame(self.paned, width=300, corner_radius=0)
         rail = self.rail
         ctk.CTkLabel(rail, text="SESSIONS", text_color=MUTED,
                      font=ctk.CTkFont(family="Menlo", size=11, weight="bold")).pack(
