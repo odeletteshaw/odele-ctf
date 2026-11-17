@@ -102,14 +102,18 @@ class ConsoleApp:
     # --- layout ------------------------------------------------------------
     def _build(self) -> None:
         self.root.grid_rowconfigure(0, weight=1)
-        self.root.grid_columnconfigure(0, weight=0)  # rail: fixed 230px
-        self.root.grid_columnconfigure(1, weight=1)  # main area fills
+        self.root.grid_columnconfigure(0, weight=1)
+        # draggable split: rail | main
+        self.paned = tk.PanedWindow(self.root, orient="horizontal", sashwidth=6,
+                                    bd=0, relief="flat", bg="#20283a")
+        self.paned.grid(row=0, column=0, sticky="nsew")
         self._build_rail()
         self._build_main()
+        self.paned.add(self.rail, minsize=160, width=230, stretch="never")
+        self.paned.add(self.main, minsize=420, stretch="always")
 
     def _build_main(self) -> None:
-        self.main = ctk.CTkFrame(self.root, corner_radius=0, fg_color="#0f1218")
-        self.main.grid(row=0, column=1, sticky="nsew")
+        self.main = ctk.CTkFrame(self.paned, corner_radius=0, fg_color="#0f1218")
         self.main.grid_columnconfigure(0, weight=1)
         self.main.grid_rowconfigure(1, weight=1)
 
@@ -220,9 +224,8 @@ class ConsoleApp:
         return view
 
     def _build_rail(self) -> None:
-        rail = ctk.CTkFrame(self.root, width=230, corner_radius=0)
-        rail.grid(row=0, column=0, sticky="ns")
-        rail.grid_propagate(False)
+        self.rail = ctk.CTkFrame(self.paned, width=230, corner_radius=0)
+        rail = self.rail
         ctk.CTkLabel(rail, text="SESSIONS", text_color=MUTED,
                      font=ctk.CTkFont(family="Menlo", size=11, weight="bold")).pack(
             anchor="w", padx=16, pady=(16, 4))
