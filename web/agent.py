@@ -83,6 +83,17 @@ Flags look like flag{...}. Only report a flag you actually saw in a response.
 When you have it, end your final message with the flag on its own line."""
 
 
+DIAGNOSTIC = """When stuck or repeating yourself, run these checks:
+- The challenge title/description usually names the vulnerability class directly (e.g.
+  "EasySQL" = SQL injection, "SSRF" = SSRF). Make that your FIRST hypothesis — don't let an
+  unrelated file (robots.txt, a "secretkey.txt", ...) derail you into guessing a different bug.
+- SQLi: confirm where the parameter actually goes — GET ?query= vs POST body — then test the
+  smallest payloads (1, ', 1' or '1'='1) and read the response difference (error / echo / a
+  "Nonono"-style filter). A common bypass when select/union/from/where are filtered is `*,1`.
+- If the response looks "static", first check it isn't gzipped/truncated or that you're using
+  the wrong parameter name — don't jump to "not <vuln class>" before ruling those out."""
+
+
 def web_tools(target: str, client: httpx.Client) -> list[Tool]:
     return [http_tool(target, client), http_batch_tool(target, client), python_tool(), phar_tool()]
 
