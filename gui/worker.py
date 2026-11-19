@@ -32,7 +32,7 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any) -> None:
     pattern = None
     if spec.get("kind") == "custom":
         prefix = spec.get("flag_prefix") or "flag"
-        pattern = re.compile(re.escape(prefix) + r"\{[^}\s]+\}")
+        pattern = re.compile(re.escape(prefix) + r"\{[^}]+\}")
 
     cleanup = lambda: None  # noqa: E731
     try:

@@ -2,13 +2,15 @@
 subprocess; the manager spawns them, drains their event queues, and aggregates state so
 the view can render a conversation and a rich status panel per session.
 
-Sessions and folders are persisted to a JSON file (~/.odele-ctf/sessions.json) so they
-survive GUI restarts. A restored session is "done" (its subprocess is gone) but keeps its
-transcript, findings, and flag."""
+Sessions are persisted to SQLite (~/.odele-ctf/sessions.db). Only session metadata is
+loaded at startup; transcripts are loaded lazily on selection and saved incrementally,
+so a long history no longer forces an 8 MB JSON file to be read and rewritten on every
+change."""
 
 import itertools
 import json
 import multiprocessing as mp
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -20,6 +22,25 @@ from gui.worker import worker_main  # noqa: E402
 
 # spawn is the safe start method on macOS (fork + threads is unsafe there).
 _CTX = mp.get_context("spawn")
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS folders (
+    name TEXT PRIMARY KEY
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    id INTEGER PRIMARY KEY,
+    category TEXT,
+    title TEXT,
+    folder TEXT,
+    status TEXT,
+    flag TEXT,
+    spec TEXT,
+    state TEXT,
+    transcript TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_folder ON sessions(folder);
+CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+"""
 
 
 class Session:
@@ -37,6 +58,7 @@ class Session:
         self._proc: Any = None  # created in start()
         self.started_at: float | None = None
         self.transcript: list[dict[str, Any]] = []
+        self._loaded = True  # transcript is fully in memory (False for restored sessions)
         self.state: dict[str, Any] = {
             "status": "idle",
             "replies": 0,
@@ -133,42 +155,30 @@ class Session:
         elif kind == "writeup":
             self.state["writeup"] = event.get("text", "")
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
-            "spec": self.spec,
-            "title": self.title,
-            "category": self.category,
-            "folder": self.folder,
-            "transcript": self.transcript,
-            "state": self.state,
-        }
-
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "Session":
+    def from_row(cls, row: tuple) -> "Session":
+        """Rebuild a session from a metadata row (no transcript)."""
         s = cls.__new__(cls)
-        s.id = d["id"]
-        s.spec = d["spec"]
-        s.title = d["title"]
-        s.category = d["category"]
-        s.folder = d.get("folder")
+        s.id, s.category, s.title, s.folder, _status, _flag, spec, state = row
+        s.spec = json.loads(spec) if spec else {}
+        s.title = s.title or "session"
+        s.folder = s.folder
         s.events = None
         s._guidance = None
         s._proc = None
         s.started_at = None
-        s.transcript = d.get("transcript", [])
-        st = d.get("state", {})
-        s.state = {
-            "status": st.get("status", "idle"),
-            "replies": st.get("replies", 0),
-            "tool_calls": st.get("tool_calls", 0),
-            "thinking": st.get("thinking", ""),
-            "flag": st.get("flag"),
-            "paths": st.get("paths", []),
-            "tools_used": st.get("tools_used", {}),
-            "writeup": st.get("writeup", ""),
-            "done": True,  # a restored session is not running
-        }
+        s.transcript = []
+        s._loaded = False  # transcript loads lazily on selection
+        s.state = json.loads(state) if state else {}
+        s.state.setdefault("status", "idle")
+        s.state.setdefault("done", True)
+        s.state.setdefault("replies", 0)
+        s.state.setdefault("tool_calls", 0)
+        s.state.setdefault("thinking", "")
+        s.state.setdefault("flag", None)
+        s.state.setdefault("paths", [])
+        s.state.setdefault("tools_used", {})
+        s.state.setdefault("writeup", "")
         return s
 
 
@@ -176,33 +186,70 @@ class Manager:
     """Holds the open sessions, their folders, and which session is active."""
 
     def __init__(self, path: str | Path | None = None) -> None:
-        self.path = Path(path) if path else (Path.home() / ".odele-ctf" / "sessions.json")
+        self.path = Path(path) if path else (Path.home() / ".odele-ctf" / "sessions.db")
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._db = sqlite3.connect(str(self.path))
+        self._db.executescript(_SCHEMA)
         self.sessions: list[Session] = []
         self.folders: list[str] = []
         self.active: Session | None = None
         self._load()
 
     def _load(self) -> None:
-        try:
-            data = json.loads(self.path.read_text())
-        except (FileNotFoundError, json.JSONDecodeError):
-            return
-        self.folders = data.get("folders", [])
-        for d in data.get("sessions", []):
+        self.folders = [r[0] for r in self._db.execute("SELECT name FROM folders")]
+        rows = self._db.execute(
+            "SELECT id, category, title, folder, status, flag, spec, state "
+            "FROM sessions ORDER BY id"
+        ).fetchall()
+        for row in rows:
             try:
-                self.sessions.append(Session.from_dict(d))
+                self.sessions.append(Session.from_row(row))
             except Exception:
                 continue
         if self.sessions:
             Session._ids = itertools.count(max(s.id for s in self.sessions) + 1)
 
+    def load_transcript(self, session: Session) -> list[dict[str, Any]]:
+        """Load a restored session's transcript from the DB on first selection."""
+        if session._loaded:
+            return session.transcript
+        row = self._db.execute(
+            "SELECT transcript FROM sessions WHERE id=?", (session.id,)
+        ).fetchone()
+        if row and row[0]:
+            session.transcript = json.loads(row[0])
+        session._loaded = True
+        return session.transcript
+
     def save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        data = {
-            "folders": self.folders,
-            "sessions": [s.to_dict() for s in self.sessions],
-        }
-        self.path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+        """Persist sessions and folders incrementally (upsert, no full-file rewrite)."""
+        for s in self.sessions:
+            if s._loaded:
+                self._db.execute(
+                    "INSERT OR REPLACE INTO sessions "
+                    "(id, category, title, folder, status, flag, spec, state, transcript) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)",
+                    (s.id, s.category, s.title, s.folder,
+                     s.state.get("status"), s.state.get("flag"),
+                     json.dumps(s.spec, ensure_ascii=False),
+                     json.dumps(s.state, ensure_ascii=False),
+                     json.dumps(s.transcript, ensure_ascii=False)),
+                )
+            else:
+                # Never clobber a transcript we haven't loaded into memory yet.
+                self._db.execute(
+                    "UPDATE sessions SET category=?, title=?, folder=?, status=?, flag=?, "
+                    "spec=?, state=? WHERE id=?",
+                    (s.category, s.title, s.folder,
+                     s.state.get("status"), s.state.get("flag"),
+                     json.dumps(s.spec, ensure_ascii=False),
+                     json.dumps(s.state, ensure_ascii=False), s.id),
+                )
+        self._db.execute("DELETE FROM folders")
+        self._db.executemany(
+            "INSERT OR IGNORE INTO folders (name) VALUES (?)", [(f,) for f in self.folders]
+        )
+        self._db.commit()
 
     def new_folder(self, name: str) -> bool:
         name = name.strip()
@@ -225,6 +272,7 @@ class Manager:
                 self.sessions.remove(s)
             if self.active is s:
                 self.active = None
+            self._db.execute("DELETE FROM sessions WHERE id=?", (s.id,))
         self.save()
 
     def new_session(self, spec: dict[str, Any], title: str, category: str,
@@ -279,6 +327,7 @@ class Manager:
             self.sessions.remove(session)
         if self.active is session:
             self.active = None
+        self._db.execute("DELETE FROM sessions WHERE id=?", (session.id,))
         self.save()
 
     def drain_all(self) -> None:

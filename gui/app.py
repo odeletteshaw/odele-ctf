@@ -50,6 +50,13 @@ STATUS_COLORS = {
 }
 STATUS_GLYPH = {"solved": "✓", "failed": "✗", "error": "⚠", "idle": "○",
                 "cancelled": "■", "preparing": "…"}
+# Filter buckets for the session rail. "done" (custom target, no flag) and "failed"
+# (benchmark, wrong flag) are both unsolved; "cancelled" is a manual stop.
+STATUS_GROUPS = {
+    "进行中": {"running", "preparing", "idle"},
+    "失败": {"failed", "error", "cancelled", "done"},
+    "已解": {"solved"},
+}
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 MAX_OUT = 1400
 MAX_BUBBLE = 2000
@@ -64,8 +71,10 @@ class ConsoleApp:
         self.frame = 0
         self._rendered: dict[int, int] = {}
         self._rows: dict[int, ctk.CTkButton] = {}
+        self._status_drawn: dict[int, tuple] = {}
         self._inherit: dict[str, Any] | None = None
         self._auto_slots: list[dict[str, Any]] = []  # one slot per (direction, token)
+        self._rail_limit = 50  # sessions rendered at once; "load more" reveals the rest
 
         self.root = ctk.CTk()
         self.root.title("odele-ctf · supervision console")
@@ -242,8 +251,12 @@ class ConsoleApp:
         self.btn_auto.pack(fill="x", padx=10, pady=(0, 6))
         self.search_entry = ctk.CTkEntry(rail, placeholder_text="搜索 session…", height=28,
                                          font=self.mono_s)
-        self.search_entry.pack(fill="x", padx=10, pady=(0, 8))
+        self.search_entry.pack(fill="x", padx=10, pady=(0, 6))
         self.search_entry.bind("<KeyRelease>", lambda _e: self._render_rail())
+        self.status_seg = ctk.CTkSegmentedButton(rail, values=["全部", "进行中", "失败", "已解"],
+                                                 command=lambda _v: self._render_rail())
+        self.status_seg.set("全部")
+        self.status_seg.pack(fill="x", padx=10, pady=(0, 8))
         self.rail_list = ctk.CTkScrollableFrame(rail, fg_color="transparent")
         self.rail_list.pack(fill="both", expand=True, padx=4)
 
@@ -382,8 +395,8 @@ class ConsoleApp:
                 self.manager.new_folder(folder)
             self._auto_slots.append({
                 "running": True, "direction": direction, "token": tokens[i],
-                "max": maxn, "difficulty": diff, "done": 0, "current": None,
-                "current_meta": None, "phase": "idle", "queue": queue.Queue(),
+                "max": maxn, "difficulty": diff, "done": 0, "failed": set(),
+                "current": None, "current_meta": None, "phase": "idle", "queue": queue.Queue(),
             })
         self.btn_auto.configure(text="⏹ 停止打题")
         self._render_rail()
@@ -634,13 +647,28 @@ class ConsoleApp:
                     self.add_session(session)
                 slot["phase"] = "solving"
             else:
-                msg = result[1] if isinstance(result, tuple) else "打题结束"
+                # "error" = this ONE challenge failed to prepare (its env didn't start,
+                # download failed, …) → skip it and keep going. "stop" = genuinely no more.
+                skip = kind == "error" and isinstance(result, tuple) and len(result) >= 3
+                if skip:
+                    item, msg = result[1], result[2]
+                    slot.setdefault("failed", set()).add(str(item.get("id")))
+                else:
+                    msg = result[1] if isinstance(result, tuple) else "打题结束"
                 pending = slot.get("pending")
                 if pending is not None:
                     pending.state["status"] = "error"
                     pending.state["done"] = True
+                    # Surface the real reason in the chat (and persist it) instead of only
+                    # printing to the terminal, so a failed env start isn't a silent "error".
+                    pending.transcript.append({"type": "status", "status": "error", "error": msg})
                     slot["pending"] = None
-                self._stop_slot(slot, msg)
+                    self.manager.save()
+                if skip:
+                    print(f"[autosolve:{slot['direction']}] skip: {msg}")
+                    slot["phase"] = "idle"  # fetch the next challenge instead of stopping
+                else:
+                    self._stop_slot(slot, msg)
         elif slot["phase"] == "solving":
             session = slot["current"]
             if session is not None and session.state["done"]:
@@ -648,14 +676,19 @@ class ConsoleApp:
 
     def _autosolve_worker(self, slot: dict) -> None:
         try:
-            from core.autosolve import prepare_challenge
+            from core.autosolve import PLATFORM_CATEGORY, prepare_challenge
             from core.platform import PlatformClient
             client = PlatformClient(token=slot["token"])
             try:
-                nc = client.next_challenges(limit=10, difficulty=slot.get("difficulty"))
+                nc = client.next_challenges(
+                    limit=50, category=PLATFORM_CATEGORY.get(slot["direction"]),
+                    difficulty=slot.get("difficulty"),
+                )
                 items = nc.get("items") or []
+                failed = slot.get("failed") or set()
                 item = next((it for it in items
-                             if str(it.get("category", "")).lower() == slot["direction"]), None)
+                             if str(it.get("category", "")).lower() == slot["direction"]
+                             and str(it.get("id")) not in failed), None)
                 if item is None:
                     slot["queue"].put(("stop", f"{slot['direction']} 没有未解的题了"))
                     return
@@ -664,7 +697,7 @@ class ConsoleApp:
                 try:
                     result = prepare_challenge(client, item)
                 except Exception as e:
-                    slot["queue"].put(("error", f"{item.get('name')}: {e}"))
+                    slot["queue"].put(("error", item, f"{item.get('name')}: {e}"))
                     return
                 if result is None:
                     slot["queue"].put(("stop", f"{slot['direction']} 不支持"))
@@ -705,9 +738,14 @@ class ConsoleApp:
                 client.close()
             except Exception:
                 pass
-        slot["done"] += 1
+        if flag:
+            # Only a SOLVED challenge counts toward the per-direction cap; a failure is
+            # blacklisted below so the loop never re-runs the same unsolved challenge.
+            slot["done"] += 1
+        else:
+            slot.setdefault("failed", set()).add(str(meta["challenge_id"]))
         if slot["max"] and slot["done"] >= slot["max"]:
-            self._stop_slot(slot, f"{slot['direction']} 已达上限（{slot['done']} 道）")
+            self._stop_slot(slot, f"{slot['direction']} 已解出上限（{slot['done']} 道）")
         else:
             slot["phase"] = "idle"
 
@@ -725,18 +763,63 @@ class ConsoleApp:
         query = ""
         if hasattr(self, "search_entry"):
             query = (self.search_entry.get() or "").strip().lower()
+        status_filter = self.status_seg.get() if hasattr(self, "status_seg") else "全部"
 
         def matches(s: Session) -> bool:
-            return (not query) or query in s.title.lower() or query in s.category.lower()
+            if query and not (query in s.title.lower() or query in s.category.lower()):
+                return False
+            if status_filter != "全部" and s.state["status"] not in STATUS_GROUPS.get(status_filter, ()):
+                return False
+            return True
 
+        def sort_key(s: Session) -> tuple:
+            # active first, then unsolved, then solved; newest first within each group.
+            st = s.state["status"]
+            if st in ("running", "preparing", "idle"):
+                group = 0
+            elif st in ("failed", "error", "cancelled", "done"):
+                group = 1
+            else:
+                group = 2
+            return (group, -s.id)
+
+        # Group matching sessions by folder (or None for unfiled), sorted for display.
+        groups: list[tuple[str | None, list[Session]]] = []
         for folder in self.manager.folders:
-            self._folder_label(folder)
-            for s in self.manager.sessions:
-                if s.folder == folder and matches(s):
-                    self._session_button(s, indent=True)
-        for s in self.manager.sessions:
-            if s.folder is None and matches(s):
-                self._session_button(s, indent=False)
+            rows = sorted([s for s in self.manager.sessions if s.folder == folder and matches(s)],
+                          key=sort_key)
+            if rows:
+                groups.append((folder, rows))
+        unfiled = sorted([s for s in self.manager.sessions if s.folder is None and matches(s)],
+                         key=sort_key)
+        if unfiled:
+            groups.append((None, unfiled))
+
+        total = sum(len(rows) for _, rows in groups)
+        shown = 0
+        for folder, rows in groups:
+            if shown >= self._rail_limit:
+                break
+            if folder is not None:
+                self._folder_label(folder)
+            for s in rows:
+                if shown >= self._rail_limit:
+                    break
+                self._session_button(s, indent=(folder is not None))
+                shown += 1
+        if shown < total:
+            self._more_button(total - shown)
+
+    def _more_button(self, remaining: int) -> None:
+        btn = ctk.CTkButton(self.rail_list, text=f"↓ 加载更多（还有 {remaining} 个）",
+                            anchor="w", fg_color="transparent", hover_color=RAIL_SEL,
+                            height=30, font=self.mono_s, text_color=MUTED,
+                            command=self._load_more)
+        btn.pack(fill="x", pady=4, padx=8)
+
+    def _load_more(self) -> None:
+        self._rail_limit += 50
+        self._render_rail()
 
     def _folder_label(self, folder: str) -> None:
         lbl = ctk.CTkLabel(self.rail_list, text=f"▾  {folder}", text_color=FOLDER_FG,
@@ -766,9 +849,12 @@ class ConsoleApp:
             self._show_setup()
 
     def _session_button(self, session: Session, indent: bool) -> None:
-        btn = ctk.CTkButton(self.rail_list, text=f"○  {session.title}", anchor="w",
-                            fg_color="transparent", hover_color=RAIL_SEL, height=36,
-                            command=lambda s=session: self.select(s))
+        status = session.state["status"]
+        glyph = STATUS_GLYPH.get(status, "●")
+        color = STATUS_COLORS.get(status, FG)
+        btn = ctk.CTkButton(self.rail_list, text=f"{glyph}  {session.title}", anchor="w",
+                            text_color=color, fg_color="transparent", hover_color=RAIL_SEL,
+                            height=36, command=lambda s=session: self.select(s))
         btn.pack(fill="x", pady=2, padx=(24 if indent else 8, 4))
         btn.bind("<Button-3>", lambda e, s=session: self._session_menu(e, s))
         self._rows[session.id] = btn
@@ -811,6 +897,8 @@ class ConsoleApp:
         self.center_head.configure(text=f"{session.title}  ·  {session.category}", text_color=FG)
         for child in self.chat.winfo_children():
             child.destroy()
+        # A restored session's transcript lives in the DB until first selected.
+        self.manager.load_transcript(session)
         transcript = session.transcript
         if len(transcript) > MAX_RENDER_EVENTS:
             hidden = len(transcript) - MAX_RENDER_EVENTS
@@ -1094,9 +1182,16 @@ class ConsoleApp:
             btn = self._rows.get(session.id)
             if not btn:
                 continue
-            glyph = spin if session.is_running() else STATUS_GLYPH.get(session.state["status"], "●")
-            color = STATUS_COLORS.get(session.state["status"], FG)
-            btn.configure(text=f"{glyph}  {session.title}", text_color=color)
+            if session.is_running():
+                text, color = f"{spin}  {session.title}", STATUS_COLORS["running"]
+            else:
+                text = f"{STATUS_GLYPH.get(session.state['status'], '●')}  {session.title}"
+                color = STATUS_COLORS.get(session.state["status"], FG)
+            # Only reconfigure a button when its displayed state actually changes; updating
+            # every button every frame makes the rail laggy once there are many sessions.
+            if self._status_drawn.get(session.id) != (text, color):
+                btn.configure(text=text, text_color=color)
+                self._status_drawn[session.id] = (text, color)
         if self.manager.active and self.manager.active.is_running():
             self._refresh_panel()
         self.root.after(90, self._animate)

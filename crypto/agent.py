@@ -23,7 +23,8 @@ There is no network. Work in steps: identify the scheme, then break it.
 Useful techniques:
 - Brute force small keyspaces, e.g. all 256 keys of a single-byte XOR.
 - Use known plaintext (the flag starts with 'flag{') to recover a repeating-key XOR.
-- Peel nested encodings: base64, base32, hex, rot13.
+- Peel nested encodings: base64, base32, hex, rot13, percent/URL encoding (%XX — decode
+  each %HH pair to its byte, or urllib.parse.unquote the whole string).
 - RSA: if e is small (e.g. 3) and the message is short, the ciphertext may be a perfect
   e-th power, so take the integer e-th root. If the modulus is small or its primes are
   close together, factor it (trial division or Fermat), then d = e^-1 mod phi(n).

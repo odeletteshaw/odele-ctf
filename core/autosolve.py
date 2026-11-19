@@ -15,6 +15,10 @@ from .platform import PlatformClient, PlatformError
 # platform category string -> our custom direction (build_task supports these).
 SUPPORTED = {"WEB": "web", "CRYPTO": "crypto", "MISC": "misc", "FORENSICS": "forensics"}
 
+# our custom direction -> platform category string (reverse of SUPPORTED), for filtering
+# next-challenges by category so each direction only fetches its own challenges.
+PLATFORM_CATEGORY = {v: k for k, v in SUPPORTED.items()}
+
 _ENV_POLLS = 24  # 24 * 5s = up to 2 minutes for a container to become ready
 
 
@@ -33,18 +37,28 @@ def _access_urls(env: dict) -> list[str]:
 def _wait_environment(client: PlatformClient, ground_id, challenge_id) -> list[str]:
     """Start (or reuse) a challenge environment and wait for its access URL(s), retrying
     once if the first start never becomes ready."""
+    last_err: PlatformError | None = None
     for attempt in range(2):
         restarts = 0
         none_streak = 0
         ready = None
         try:
             client.start_environment(ground_id, challenge_id)
-        except PlatformError:
-            pass  # may already be running; fall through to polling
+        except PlatformError as e:
+            last_err = e  # may already be running; fall through to polling
+            # A transient rate-limit / quota rejection is retryable: honor its backoff and
+            # retry the start once instead of sitting in a doomed "none" poll.
+            if e.retryable:
+                time.sleep((e.retry_after_ms or 2000) / 1000)
+                try:
+                    client.start_environment(ground_id, challenge_id)
+                except PlatformError as e2:
+                    last_err = e2
         for _ in range(_ENV_POLLS):
             try:
                 env = client.get_environment(ground_id, challenge_id)
-            except PlatformError:
+            except PlatformError as e:
+                last_err = e
                 env = {}
             if env.get("access_ready"):
                 ready = _access_urls(env)
@@ -54,8 +68,8 @@ def _wait_environment(client: PlatformClient, ground_id, challenge_id) -> list[s
                 restarts += 1
                 try:
                     client.start_environment(ground_id, challenge_id)
-                except PlatformError:
-                    pass
+                except PlatformError as e:
+                    last_err = e
                 none_streak = 0
                 continue
             if status == "none":
@@ -75,7 +89,10 @@ def _wait_environment(client: PlatformClient, ground_id, challenge_id) -> list[s
         except PlatformError:
             pass
         time.sleep(2)
-    return []
+    detail = ""
+    if last_err is not None:
+        detail = f" (last start error: {last_err.code} {last_err.message})"
+    raise RuntimeError(f"container environment did not become ready{detail}")
 
 
 def prepare_challenge(client: PlatformClient, item: dict) -> tuple[dict, dict] | None:

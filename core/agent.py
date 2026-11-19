@@ -14,9 +14,11 @@ from openai import OpenAI
 
 from . import config
 
-FLAG_PATTERN = re.compile(r"flag\{[^}\s]+\}")
+# Flag contents may contain spaces (e.g. a URL-encoded payload decodes to "flag{and 1=1}"),
+# so only '}' terminates the match — do NOT exclude whitespace inside the braces.
+FLAG_PATTERN = re.compile(r"flag\{[^}]+\}")
 # Fallback for targets whose flag uses a different keyword (ctf{...}, answer{...}, ...).
-GENERAL_FLAG_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_]*\{[^}\s]+\}")
+GENERAL_FLAG_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_]*\{[^}]+\}")
 
 
 def _is_placeholder_flag(flag: str) -> bool:
