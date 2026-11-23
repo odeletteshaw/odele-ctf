@@ -19,7 +19,9 @@ from . import config
 # model's reasoning text is never captured as the whole paragraph.
 FLAG_PATTERN = re.compile(r"flag\{[^}\n\"']+\}")
 # Fallback for targets whose flag uses a different keyword (ctf{...}, answer{...}, ...).
-GENERAL_FLAG_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_]*\{[^}\n\"']+\}")
+# Require a >=3-char prefix so code/regex fragments like "d{11}", "s{14}", "n{2}" (from
+# \d{11}, s:14, ...) are never mistaken for a flag.
+GENERAL_FLAG_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_]{2,}\{[^}\n\"']+\}")
 
 
 def _is_placeholder_flag(flag: str) -> bool:

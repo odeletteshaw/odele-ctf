@@ -40,6 +40,11 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_folder ON sessions(folder);
 CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+CREATE TABLE IF NOT EXISTS failed_challenges (
+    challenge_id TEXT PRIMARY KEY,
+    direction TEXT,
+    ts REAL
+);
 """
 
 
@@ -329,6 +334,21 @@ class Manager:
             self.active = None
         self._db.execute("DELETE FROM sessions WHERE id=?", (session.id,))
         self.save()
+
+    def add_failed(self, challenge_id: str, direction: str | None = None) -> None:
+        """Persist a challenge the agent failed to solve so autosolve skips it next time."""
+        self._db.execute(
+            "INSERT OR REPLACE INTO failed_challenges (challenge_id, direction, ts) VALUES (?,?,?)",
+            (str(challenge_id), direction, time.time()),
+        )
+        self._db.commit()
+
+    def failed_ids(self) -> set[str]:
+        return {r[0] for r in self._db.execute("SELECT challenge_id FROM failed_challenges")}
+
+    def clear_failed(self) -> None:
+        self._db.execute("DELETE FROM failed_challenges")
+        self._db.commit()
 
     def drain_all(self) -> None:
         for session in self.sessions:
