@@ -117,6 +117,9 @@ def _custom(spec: dict[str, Any]) -> Built:
     if direction == "web":
         web = importlib.import_module("web.agent")
         client = web.new_http_client()
+        if workdir is None:
+            # web always gets a workspace so download_file can save raw bytes into it
+            workdir = Path(tempfile.mkdtemp(prefix="ctf-custom-"))
         tools = web.web_tools_multi(urls, client, workdir)
         targets = "\n".join(f"[{i}] {u}" for i, u in enumerate(urls))
         user = (

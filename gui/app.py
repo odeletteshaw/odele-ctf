@@ -717,12 +717,14 @@ class ConsoleApp:
         client = PlatformClient(token=slot["token"])
         try:
             flag = session.state.get("flag") if session else None
+            accepted = False  # True only if the platform actually accepted the flag
             try:
                 if flag:
                     try:
                         client.submit_flag(meta["ground_id"], meta["challenge_id"], flag)
+                        accepted = True
                     except PlatformError as e:
-                        print(f"[autosolve:{slot['direction']}] submit: {e.code}")
+                        print(f"[autosolve:{slot['direction']}] submit rejected: {e.code}")
                 client.log_note(meta["challenge_id"], "result",
                                 (f"solved: {flag}" if flag else "no flag found")[:2000])
             except Exception as e:
@@ -738,9 +740,9 @@ class ConsoleApp:
                 client.close()
             except Exception:
                 pass
-        if flag:
-            # Only a SOLVED challenge counts toward the per-direction cap; a failure is
-            # blacklisted below so the loop never re-runs the same unsolved challenge.
+        if flag and accepted:
+            # Only a challenge whose flag the platform ACCEPTED counts toward the cap; a
+            # wrong/rejected flag is blacklisted below so it isn't re-run as if unsolved.
             slot["done"] += 1
         else:
             slot.setdefault("failed", set()).add(str(meta["challenge_id"]))

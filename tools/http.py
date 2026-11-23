@@ -1,6 +1,7 @@
 """The http_request agent capability, locked to a single target origin."""
 
 import copy
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -99,6 +100,60 @@ def multi_http_tool(targets: list[str], client: httpx.Client) -> Tool:
             "Redirects are returned, not followed."
         ),
         parameters=params,
+        handler=handler,
+    )
+
+
+def download_tool(targets: list[str], client: httpx.Client, workdir: Path | None) -> Tool:
+    """Download a file from a target to the persistent workspace as raw bytes (no lossy
+    text decoding), so run_python can then read binary files (zip archives, images, ...)."""
+
+    def handler(args: dict[str, Any]) -> str:
+        try:
+            target = _pick_target(targets, args)
+            url = build_url(target, args["path"])
+            response = client.request("GET", url)
+        except (OutOfScope, httpx.HTTPError, httpx.InvalidURL) as error:
+            return f"Error: {error}"
+        if workdir is None:
+            return "Error: download_file needs a workspace (none was created for this target)"
+        filename = str(args.get("filename") or "").strip()
+        if not filename:
+            filename = args["path"].rstrip("/").rsplit("/", 1)[-1] or "download.bin"
+        safe = Path(filename).name  # basename only, so the agent can't escape the workspace
+        if not safe:
+            safe = "download.bin"
+        try:
+            dest = workdir / safe
+            dest.write_bytes(response.content)
+        except OSError as error:
+            return f"Error saving file: {error}"
+        ctype = response.headers.get("content-type", "?")
+        return (
+            f"Saved {len(response.content)} bytes to {safe!r} in the workspace "
+            f"(Content-Type: {ctype}). Read it with run_python — e.g. "
+            f"open({safe!r}, 'rb'), zipfile.ZipFile({safe!r}), etc."
+        )
+
+    return Tool(
+        name="download_file",
+        description=(
+            "Download a file from a challenge target to the persistent workspace as RAW "
+            "BYTES (not lossy text), so run_python can read binary files such as zip "
+            "backups, images, or compiled binaries. 'path' is the file path on the target "
+            "starting with '/'; 'target' selects which listed target (0-based, omit for the "
+            "first); optional 'filename' overrides the saved name. Returns the saved name "
+            "and size."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Path on the target, starting with /"},
+                "target": {"type": "integer", "description": "0-based target index; omit for the first"},
+                "filename": {"type": "string", "description": "Optional name to save the file as (basename only)"},
+            },
+            "required": ["path"],
+        },
         handler=handler,
     )
 

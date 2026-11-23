@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.agent import SolveResult, Tool, solve  # noqa: E402
 from tools.http import (  # noqa: E402
+    download_tool,
     http_batch_tool,
     http_tool,
     multi_http_batch_tool,
@@ -26,15 +27,22 @@ from tools.phar import phar_tool  # noqa: E402
 from tools.sandbox import python_tool  # noqa: E402
 
 SYSTEM_PROMPT = """You are an expert web penetration tester solving a CTF challenge.
-You have three tools:
+You have four tools:
 - http_request: send ONE HTTP request to the challenge target and read the full response.
 - http_batch: send up to 60 HTTP requests in one call (one compact line each) to fuzz or
   brute-force many candidate paths/params at once; follow up on hits with http_request.
+- download_file: download a file from the target to a persistent workspace as RAW BYTES.
+  Use this for binary files (zip backups, images, ...) — http_request returns text and would
+  mangle them. Then read the saved file with run_python.
 - run_python: runs Python offline (no network) for computation — encoding, hashing,
-  HMAC, signing or forging tokens, brute-forcing a weak secret, breaking a cipher.
+  HMAC, signing or forging tokens, brute-forcing a weak secret, breaking a cipher. It runs
+  in the SAME persistent workspace download_file writes into, so it can read those files
+  (os.listdir('.'), open('name','rb'), zipfile.ZipFile('name'), ...).
 Use run_python to build any payload that needs real computation, then send it with
 http_request. For example, recover a weak JWT secret by brute force, re-sign a token
-with role=admin, then replay it.
+with role=admin, then replay it. When you find a backup file (www.zip, .bak, .git, ...),
+download it with download_file and read its source with run_python instead of trying to
+read the binary through http_request's lossy text.
 
 Method:
 - First map the app: fetch /, read the HTML, forms, links, comments, cookies, and
@@ -78,6 +86,14 @@ Common vulnerability classes to consider:
   as the last bytes of a block); (3) splice block-2 then block-1. CBC bit-flip: flip a bit in
   the IV or previous ciphertext block to flip that same plaintext bit. Padding oracle: a
   server that reports valid/invalid padding leaks plaintext byte by byte.
+- PHP deserialization: a value passed straight into unserialize() (or into file operations
+  with a phar:// path) triggers object injection — craft O:len:"Class":N:{...}. A PRIVATE
+  property $prop of class C is serialized as \\0C\\0prop, and PROTECTED as \\0*\\0prop — the
+  \\0 is a raw null byte, written as %00 in a URL; the s:N: length counts the RAW bytes
+  (e.g. "\\0Name\\0username" is 14 bytes: 1+4+1+8). __wakeup() runs on unserialize and often
+  resets properties — the CVE-2016-7124 trick skips it by making the DECLARED property count
+  larger than the object really has (change O:4:"Name":2: to O:4:"Name":3:). __destruct()
+  runs at end of script. Read the class definition first so names, sizes, and order match.
 
 Flags look like flag{...}. Only report a flag you actually saw in a response.
 When you have it, end your final message with the flag on its own line."""
@@ -102,11 +118,11 @@ def web_tools_multi(
     urls: list[str], client: httpx.Client, workdir: Path | None = None
 ) -> list[Tool]:
     """Custom-target tools: one http_request/http_batch that can hit any of several origins
-    (via a 0-based 'target' argument), plus run_python — pointed at a persistent workspace if
-    the user attached files for the agent to read — plus a phar generator for phar
-    deserialization."""
-    return [multi_http_tool(urls, client), multi_http_batch_tool(urls, client), python_tool(workdir),
-            phar_tool()]
+    (via a 0-based 'target' argument), a download_file tool that saves raw bytes into the
+    workspace, run_python pointed at that same workspace (so it can read downloaded files),
+    plus a phar generator for phar deserialization."""
+    return [multi_http_tool(urls, client), multi_http_batch_tool(urls, client),
+            download_tool(urls, client, workdir), python_tool(workdir), phar_tool()]
 
 
 def solve_web(

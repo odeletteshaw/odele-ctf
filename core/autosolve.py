@@ -21,6 +21,23 @@ PLATFORM_CATEGORY = {v: k for k, v in SUPPORTED.items()}
 
 _ENV_POLLS = 24  # 24 * 5s = up to 2 minutes for a container to become ready
 
+# The platform rejects start_environment with RATE_LIMIT_EXCEEDED when containers are
+# started too fast back-to-back. Space starts out and back off longer on a retryable
+# rejection instead of hammering the endpoint and erroring a whole batch.
+_ENV_START_GAP = 20.0  # minimum seconds between start_environment calls
+_RATE_LIMIT_BACKOFF = 20.0  # seconds to wait before retrying a retryable rejection
+_last_env_start = 0.0
+
+
+def _throttled_start(client: PlatformClient, ground_id, challenge_id) -> dict:
+    """start_environment with a minimum gap between calls (rate-limit avoidance)."""
+    global _last_env_start
+    wait = _ENV_START_GAP - (time.time() - _last_env_start)
+    if wait > 0:
+        time.sleep(wait)
+    _last_env_start = time.time()
+    return client.start_environment(ground_id, challenge_id)
+
 
 def _access_urls(env: dict) -> list[str]:
     urls: list[str] = []
@@ -43,15 +60,15 @@ def _wait_environment(client: PlatformClient, ground_id, challenge_id) -> list[s
         none_streak = 0
         ready = None
         try:
-            client.start_environment(ground_id, challenge_id)
+            _throttled_start(client, ground_id, challenge_id)
         except PlatformError as e:
             last_err = e  # may already be running; fall through to polling
             # A transient rate-limit / quota rejection is retryable: honor its backoff and
             # retry the start once instead of sitting in a doomed "none" poll.
             if e.retryable:
-                time.sleep((e.retry_after_ms or 2000) / 1000)
+                time.sleep((e.retry_after_ms or _RATE_LIMIT_BACKOFF * 1000) / 1000)
                 try:
-                    client.start_environment(ground_id, challenge_id)
+                    _throttled_start(client, ground_id, challenge_id)
                 except PlatformError as e2:
                     last_err = e2
         for _ in range(_ENV_POLLS):
@@ -67,7 +84,7 @@ def _wait_environment(client: PlatformClient, ground_id, challenge_id) -> list[s
             if status == "error" and restarts < 1:
                 restarts += 1
                 try:
-                    client.start_environment(ground_id, challenge_id)
+                    _throttled_start(client, ground_id, challenge_id)
                 except PlatformError as e:
                     last_err = e
                 none_streak = 0
