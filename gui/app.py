@@ -71,7 +71,7 @@ STATUS_GROUPS = {
     "已解": {"solved"},
 }
 
-PAGE_SIZE = 10  # table rows per page
+PAGE_SIZE = 20  # table rows per page
 
 
 class ConsoleApp:
