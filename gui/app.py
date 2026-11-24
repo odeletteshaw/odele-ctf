@@ -38,7 +38,7 @@ VERSION = "0.3.0"
 FG = "#d6dae3"
 MUTED = "#7f8a9b"
 SIDEBAR_BG = "#141a24"
-SIDEBAR_WIDTH = 240  # fixed left sidebar width in px
+SIDEBAR_WIDTH = 200  # fixed left sidebar width in px
 PAGE_BG = "#0f1218"
 CARD_BG = "#171d29"
 ACCENT = "#243043"
@@ -173,10 +173,10 @@ class ConsoleApp:
         # breadcrumb
         crumb = ctk.CTkFrame(page, fg_color="transparent")
         crumb.grid(row=0, column=0, sticky="ew", padx=20, pady=(14, 2))
-        ctk.CTkButton(crumb, text="← 返回", width=72, height=28, font=self.mono_s,
-                      command=lambda: self._show_page("ctf")).pack(side="left")
         self.detail_crumb = ctk.CTkLabel(crumb, text="", font=self.mono_s, text_color=MUTED)
-        self.detail_crumb.pack(side="left", padx=(10, 0))
+        self.detail_crumb.pack(side="left")
+        ctk.CTkButton(crumb, text="返回", width=72, height=28, font=self.mono_s,
+                      command=lambda: self._show_page("ctf")).pack(side="right")
 
         # title + status + flag
         self.detail_title = ctk.CTkLabel(page, text="", font=self.bold, text_color=FG, anchor="w")
@@ -212,10 +212,10 @@ class ConsoleApp:
         self.detail_flag.configure(text=self._detail_flag or "—")
         self.detail_tabs.set("Findings")
         self._switch_detail_tab("Findings")
-        for key, p in self.pages.items():
+        for p in self.pages.values():
             p.grid_remove()
         self.pages["detail"].grid(row=0, column=0, sticky="nsew")
-        for key, btn in self._menu_btns.items():
+        for btn in self._menu_btns.values():
             btn.configure(fg_color="transparent")
 
     def _switch_detail_tab(self, tab: str) -> None:
