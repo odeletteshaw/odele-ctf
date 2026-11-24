@@ -302,14 +302,8 @@ class ConsoleApp:
             return True
 
         def sort_key(s: Session) -> tuple:
-            st = s.state["status"]
-            if st in ("running", "preparing", "idle"):
-                group = 0
-            elif st in ("failed", "error", "cancelled", "done"):
-                group = 1
-            else:
-                group = 2
-            return (group, -s.id)
+            # newest first (higher id = more recent)
+            return (-s.id,)
 
         return sorted((s for s in self.manager.sessions if matches(s)), key=sort_key)
 
