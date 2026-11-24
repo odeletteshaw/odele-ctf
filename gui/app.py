@@ -295,8 +295,7 @@ class ConsoleApp:
             ctk.CTkButton(act, text="停止", width=52, height=26, font=self.mono_s,
                           fg_color=DANGER, hover_color=DANGER_HOVER,
                           command=lambda s=session: self._stop_session(s)).pack(side="left", padx=2)
-        elif (session.spec.get("platform_challenge_id")
-              and session.state["status"] in ("done", "failed", "error", "cancelled")):
+        elif session.state["status"] in ("done", "failed", "error", "cancelled"):
             ctk.CTkButton(act, text="重试", width=52, height=26, font=self.mono_s,
                           fg_color="#2a3648", hover_color=ACCENT,
                           command=lambda s=session: self._retry_challenge(s)).pack(side="left", padx=2)
@@ -388,36 +387,55 @@ class ConsoleApp:
 
     def _retry_challenge(self, session: Session) -> None:
         """Retry ONE failed challenge: un-blacklist it and re-fetch + re-solve it."""
-        spec = session.spec or {}
-        cid = spec.get("platform_challenge_id")
-        gid = spec.get("platform_ground_id")
-        if not cid or not gid:
-            messagebox.showinfo("重试", "这个 session 没有平台题目信息，无法自动重试。", parent=self.root)
-            return
         if not messagebox.askyesno("重试", f"重新解 “{session.title}”？会重新起环境并重试一次。",
                                    parent=self.root):
             return
-        self.manager.remove_failed(str(cid))
-        threading.Thread(target=self._retry_worker,
-                         args=(cid, gid, session.category, session.title), daemon=True).start()
+        threading.Thread(target=self._retry_worker, args=(session,), daemon=True).start()
 
-    def _retry_worker(self, cid: str, gid: str, category: str, title: str) -> None:
+    def _retry_worker(self, session: Session) -> None:
         try:
+            spec = session.spec or {}
+            cid = spec.get("platform_challenge_id")
+            gid = spec.get("platform_ground_id")
+            if not cid or not gid:
+                resolved = self._resolve_platform_id(session.title, session.category)
+                if not resolved:
+                    self._retry_queue.put(("error", f"{session.title}: 找不到平台题目信息"))
+                    return
+                cid, gid = resolved
             from core.autosolve import prepare_challenge
             from core.platform import PlatformClient
             client = PlatformClient()
             try:
                 item = {"id": cid, "practice_ground_id": gid,
-                        "category": str(category).upper(), "name": title}
-                spec, meta = prepare_challenge(client, item)
-                spec = dict(spec)
-                spec["platform_challenge_id"] = cid
-                spec["platform_ground_id"] = gid
-                self._retry_queue.put(("spec", spec, meta))
+                        "category": str(session.category).upper(), "name": session.title}
+                new_spec, meta = prepare_challenge(client, item)
+                new_spec = dict(new_spec)
+                new_spec["platform_challenge_id"] = cid
+                new_spec["platform_ground_id"] = gid
+                self._retry_queue.put(("spec", new_spec, meta, str(cid)))
             finally:
                 client.close()
         except Exception as e:
-            self._retry_queue.put(("error", f"{title}: {e}"))
+            self._retry_queue.put(("error", f"{session.title}: {e}"))
+
+    def _resolve_platform_id(self, title: str, category: str) -> tuple[str, str] | None:
+        """Find a challenge's (challenge_id, ground_id) by matching its name."""
+        try:
+            from core.autosolve import PLATFORM_CATEGORY
+            from core.platform import PlatformClient
+            client = PlatformClient()
+            try:
+                nc = client.next_challenges(limit=200, category=PLATFORM_CATEGORY.get(category))
+                items = nc.get("items") or []
+                for it in items:
+                    if str(it.get("name")) == title:
+                        return (str(it.get("id")), str(it.get("practice_ground_id")))
+            finally:
+                client.close()
+        except Exception as e:
+            print(f"[retry] resolve: {e}")
+        return None
 
     def _drain_retry_queue(self) -> None:
         while True:
@@ -426,11 +444,14 @@ class ConsoleApp:
             except queue.Empty:
                 break
             kind = item[0] if isinstance(item, tuple) else None
-            if kind == "spec" and len(item) >= 3:
-                spec, meta = item[1], item[2]
+            if kind == "spec" and len(item) >= 4:
+                spec, meta, cid = item[1], item[2], item[3]
+                self.manager.remove_failed(cid)
                 self.manager.new_session(spec, meta["name"], meta["category"])
             elif kind == "error":
-                print(f"[retry] {item[1] if len(item) > 1 else 'error'}")
+                msg = item[1] if len(item) > 1 else "error"
+                print(f"[retry] {msg}")
+                messagebox.showinfo("重试失败", msg, parent=self.root)
             self._table_sig = None
 
     # =====================================================================
