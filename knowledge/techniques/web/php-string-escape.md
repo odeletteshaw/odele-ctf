@@ -35,6 +35,9 @@ $input   = str_repeat('where', strlen($payload)) . $payload;
 - `str_repeat` 的次数必须**恰好等于 `strlen(payload)`**；多一次少一次边界对不齐，`unserialize` 直接报错。
 - 触发词必须是**源码里确实会被替换的那个词**，替换前后长度差决定是「顶出」还是「吃进」。
 - 注入串里的 `"` 不需要转义——serialize 靠 `s:N:` 长度定位内容，不转义引号；别手动加 `\"`。
+- 可控字段常有 `preg_match(...) || strlen(...) > N` 校验：**用 `field[]` 把值传成数组即可绕过**（PHP 5.x 对数组跑
+  preg_match/strlen 返回 falsy，校验失效）。此时该字段序列化后是 `a:1:{i:0;s:N:"...";}`（多一层数组），
+  注入串要先 `}` 闭合这个内层数组、再注入新字段——payload 里的第一个 `}` 就是干这个的。
 
 ## 关联
 
