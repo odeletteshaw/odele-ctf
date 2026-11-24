@@ -749,9 +749,6 @@ class ConsoleApp:
         card = ctk.CTkFrame(page, fg_color=CARD_BG, corner_radius=14)
         card.pack(padx=48, pady=30, fill="x", anchor="n")
         ctk.CTkLabel(card, text="配置管理", font=self.bold).pack(anchor="w", padx=26, pady=(22, 6))
-        self.config_box = ctk.CTkTextbox(card, font=self.mono_s, height=360, wrap="word")
-        self.config_box.pack(fill="both", expand=True, padx=26, pady=(4, 8))
-        self.config_box.configure(state="disabled")
         btn_row = ctk.CTkFrame(card, fg_color="transparent")
         btn_row.pack(anchor="w", padx=26, pady=(0, 8))
         ctk.CTkButton(btn_row, text="🔄 刷新", width=100, height=30, font=self.mono_s,
@@ -759,6 +756,9 @@ class ConsoleApp:
         ctk.CTkButton(btn_row, text="清空失败黑名单", width=140, height=30, font=self.mono_s,
                       fg_color=DANGER, hover_color=DANGER_HOVER,
                       command=self._clear_failed).pack(side="left", padx=(8, 0))
+        self.config_box = ctk.CTkTextbox(card, font=self.mono_s, height=360, wrap="word")
+        self.config_box.pack(fill="both", expand=True, padx=26, pady=(4, 8))
+        self.config_box.configure(state="disabled")
         ctk.CTkLabel(card, text="配置通过 .env 修改（DEEPSEEK_API_KEY / CTF_MODEL / CTF_API_BASE / "
                                "CTF2_AGENT_TOKEN_0..N）。修改后重启 GUI 生效。",
                      text_color=MUTED, font=self.mono_s, anchor="w").pack(
