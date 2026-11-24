@@ -38,6 +38,7 @@ VERSION = "0.3.0"
 FG = "#d6dae3"
 MUTED = "#7f8a9b"
 SIDEBAR_BG = "#141a24"
+SIDEBAR_WIDTH = 240  # fixed left sidebar width in px
 PAGE_BG = "#0f1218"
 CARD_BG = "#171d29"
 ACCENT = "#243043"
@@ -107,10 +108,10 @@ class ConsoleApp:
     #  layout
     # =====================================================================
     def _build(self) -> None:
-        # fixed 3:7 split, non-draggable (plain grid, no paned window)
+        # fixed-width sidebar + flexible main area (plain grid, no paned window)
         self.root.grid_rowconfigure(0, weight=1)
-        self.root.grid_columnconfigure(0, weight=3)
-        self.root.grid_columnconfigure(1, weight=7)
+        self.root.grid_columnconfigure(0, weight=0, minsize=SIDEBAR_WIDTH)
+        self.root.grid_columnconfigure(1, weight=1)
         self._build_sidebar()
         self._build_pages()
 
