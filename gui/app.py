@@ -264,6 +264,7 @@ class ConsoleApp:
         head = ctk.CTkFrame(page, fg_color=CARD_BG, corner_radius=0)
         head.grid(row=1, column=0, sticky="ew", padx=20)
         head.grid_columnconfigure(1, weight=1)
+        head.grid_columnconfigure(3, minsize=232)
         for col, text, width in ((0, "大类", 90), (1, "题目名称", 0), (2, "状态", 90), (3, "操作", 232)):
             kwargs: dict[str, Any] = {"text": text, "font": self.bold_s, "text_color": MUTED}
             if width:
@@ -348,6 +349,7 @@ class ConsoleApp:
         row = ctk.CTkFrame(self.table_rows, fg_color=CARD_BG, corner_radius=6)
         row.pack(fill="x", pady=2)
         row.grid_columnconfigure(1, weight=1)
+        row.grid_columnconfigure(3, minsize=232)
 
         st = session.state["status"]
         cat = ctk.CTkLabel(row, text=session.category, width=90, anchor="w", font=self.mono_s,
@@ -360,7 +362,7 @@ class ConsoleApp:
         stat.grid(row=0, column=2, padx=10)
 
         act = ctk.CTkFrame(row, fg_color="transparent")
-        act.grid(row=0, column=3, padx=6, pady=2)
+        act.grid(row=0, column=3, padx=10, pady=2, sticky="w")
         ctk.CTkButton(act, text="查看", width=52, height=26, font=self.mono_s,
                       command=lambda s=session: self._show_detail(s)).pack(side="left", padx=2)
         if session.is_running():
