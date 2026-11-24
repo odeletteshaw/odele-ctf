@@ -265,9 +265,10 @@ class ConsoleApp:
         # column header
         head = ctk.CTkFrame(page, fg_color=CARD_BG, corner_radius=0)
         head.grid(row=1, column=0, sticky="ew", padx=20)
-        head.grid_columnconfigure(1, weight=1)
-        head.grid_columnconfigure(3, minsize=232)
-        for col, text, width in ((0, "大类", 90), (1, "题目名称", 0), (2, "状态", 90), (3, "操作", 232)):
+        head.grid_columnconfigure(2, weight=1)
+        head.grid_columnconfigure(5, minsize=232)
+        for col, text, width in ((0, "编号", 60), (1, "大类", 90), (2, "题目名称", 0),
+                                 (3, "状态", 90), (4, "创建时间", 110), (5, "操作", 232)):
             kwargs: dict[str, Any] = {"text": text, "font": self.bold_s, "text_color": MUTED}
             if width:
                 kwargs["width"] = width
@@ -350,21 +351,27 @@ class ConsoleApp:
     def _table_row(self, session: Session) -> None:
         row = ctk.CTkFrame(self.table_rows, fg_color=CARD_BG, corner_radius=6)
         row.pack(fill="x", pady=2)
-        row.grid_columnconfigure(1, weight=1)
-        row.grid_columnconfigure(3, minsize=232)
+        row.grid_columnconfigure(2, weight=1)
+        row.grid_columnconfigure(5, minsize=232)
 
         st = session.state["status"]
+        sid = ctk.CTkLabel(row, text=str(session.id), width=60, anchor="w", font=self.mono_s,
+                           text_color=MUTED)
+        sid.grid(row=0, column=0, padx=10, pady=6, sticky="w")
         cat = ctk.CTkLabel(row, text=session.category, width=90, anchor="w", font=self.mono_s,
                            text_color=MUTED)
-        cat.grid(row=0, column=0, padx=10, pady=6, sticky="w")
+        cat.grid(row=0, column=1, padx=10, pady=6, sticky="w")
         title = ctk.CTkLabel(row, text=session.title, anchor="w", font=self.mono, text_color=FG)
-        title.grid(row=0, column=1, padx=10, sticky="ew")
+        title.grid(row=0, column=2, padx=10, sticky="ew")
         stat = ctk.CTkLabel(row, text=STATUS_LABEL.get(st, st), width=90,
                             text_color=STATUS_COLOR.get(st, FG), font=self.mono_s)
-        stat.grid(row=0, column=2, padx=10)
+        stat.grid(row=0, column=3, padx=10)
+        when = ctk.CTkLabel(row, text=self._fmt_time(session.created_at), width=110,
+                            text_color=MUTED, font=self.mono_s)
+        when.grid(row=0, column=4, padx=10)
 
         act = ctk.CTkFrame(row, fg_color="transparent")
-        act.grid(row=0, column=3, padx=10, pady=2, sticky="w")
+        act.grid(row=0, column=5, padx=10, pady=2, sticky="w")
         ctk.CTkButton(act, text="查看", width=52, height=26, font=self.mono_s,
                       command=lambda s=session: self._show_detail(s)).pack(side="left", padx=2)
         if session.is_running():
@@ -380,8 +387,14 @@ class ConsoleApp:
                       command=lambda s=session: self._delete_session(s)).pack(side="left", padx=2)
 
         # right-click anywhere on the row → copy menu (labels aren't selectable otherwise)
-        for w in (row, cat, title, stat, act):
+        for w in (row, sid, cat, title, stat, when, act):
             w.bind("<Button-3>", lambda e, s=session: self._row_menu(e, s))
+
+    def _fmt_time(self, ts: float | None) -> str:
+        if not ts:
+            return "—"
+        from datetime import datetime
+        return datetime.fromtimestamp(ts).strftime("%m-%d %H:%M")
 
     def _row_menu(self, event: tk.Event, session: Session) -> None:
         menu = tk.Menu(self.root, tearoff=0, bg="#141822", fg=FG,

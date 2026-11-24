@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     flag TEXT,
     spec TEXT,
     state TEXT,
-    transcript TEXT
+    transcript TEXT,
+    created_at REAL
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_folder ON sessions(folder);
 CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
@@ -62,6 +63,7 @@ class Session:
         self._guidance: Any = _CTX.Queue()
         self._proc: Any = None  # created in start()
         self.started_at: float | None = None
+        self.created_at: float | None = time.time()
         self.transcript: list[dict[str, Any]] = []
         self._loaded = True  # transcript is fully in memory (False for restored sessions)
         self.state: dict[str, Any] = {
@@ -164,7 +166,7 @@ class Session:
     def from_row(cls, row: tuple) -> "Session":
         """Rebuild a session from a metadata row (no transcript)."""
         s = cls.__new__(cls)
-        s.id, s.category, s.title, s.folder, _status, _flag, spec, state = row
+        s.id, s.category, s.title, s.folder, _status, _flag, spec, state, created_at = row
         s.spec = json.loads(spec) if spec else {}
         s.title = s.title or "session"
         s.folder = s.folder
@@ -172,6 +174,7 @@ class Session:
         s._guidance = None
         s._proc = None
         s.started_at = None
+        s.created_at = created_at
         s.transcript = []
         s._loaded = False  # transcript loads lazily on selection
         s.state = json.loads(state) if state else {}
@@ -195,6 +198,10 @@ class Manager:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(str(self.path))
         self._db.executescript(_SCHEMA)
+        # migrate older DBs that predate the created_at column
+        cols = [r[1] for r in self._db.execute("PRAGMA table_info(sessions)")]
+        if "created_at" not in cols:
+            self._db.execute("ALTER TABLE sessions ADD COLUMN created_at REAL")
         self.sessions: list[Session] = []
         self.folders: list[str] = []
         self.active: Session | None = None
@@ -203,7 +210,7 @@ class Manager:
     def _load(self) -> None:
         self.folders = [r[0] for r in self._db.execute("SELECT name FROM folders")]
         rows = self._db.execute(
-            "SELECT id, category, title, folder, status, flag, spec, state "
+            "SELECT id, category, title, folder, status, flag, spec, state, created_at "
             "FROM sessions ORDER BY id"
         ).fetchall()
         for row in rows:
@@ -232,13 +239,14 @@ class Manager:
             if s._loaded:
                 self._db.execute(
                     "INSERT OR REPLACE INTO sessions "
-                    "(id, category, title, folder, status, flag, spec, state, transcript) "
-                    "VALUES (?,?,?,?,?,?,?,?,?)",
+                    "(id, category, title, folder, status, flag, spec, state, transcript, created_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
                     (s.id, s.category, s.title, s.folder,
                      s.state.get("status"), s.state.get("flag"),
                      json.dumps(s.spec, ensure_ascii=False),
                      json.dumps(s.state, ensure_ascii=False),
-                     json.dumps(s.transcript, ensure_ascii=False)),
+                     json.dumps(s.transcript, ensure_ascii=False),
+                     s.created_at),
                 )
             else:
                 # Never clobber a transcript we haven't loaded into memory yet.
