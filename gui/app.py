@@ -85,6 +85,8 @@ class ConsoleApp:
         self._page = 0
         self._table_sig: tuple | None = None
         self._manual_attachments: list[str] = []
+        self._detail_session: Session | None = None
+        self._detail_flag = ""
 
         self.root = ctk.CTk()
         self.root.title(f"Odele v{VERSION}")
@@ -139,6 +141,7 @@ class ConsoleApp:
             "ctf": self._build_ctf_page(),
             "manual": self._build_manual_page(),
             "config": self._build_config_page(),
+            "detail": self._build_detail_page(),
         }
 
     def _show_page(self, name: str) -> None:
@@ -156,6 +159,80 @@ class ConsoleApp:
         """Expose a just-created session (used by gui.launch's CLI args)."""
         self._table_sig = None
         self._show_page("ctf")
+
+    # =====================================================================
+    #  page: task detail (查看)
+    # =====================================================================
+    def _build_detail_page(self) -> ctk.CTkFrame:
+        page = ctk.CTkFrame(self.main, fg_color="transparent")
+        page.grid_columnconfigure(0, weight=1)
+        page.grid_rowconfigure(4, weight=1)
+
+        # breadcrumb
+        crumb = ctk.CTkFrame(page, fg_color="transparent")
+        crumb.grid(row=0, column=0, sticky="ew", padx=20, pady=(14, 2))
+        ctk.CTkButton(crumb, text="← 返回", width=72, height=28, font=self.mono_s,
+                      command=lambda: self._show_page("ctf")).pack(side="left")
+        self.detail_crumb = ctk.CTkLabel(crumb, text="", font=self.mono_s, text_color=MUTED)
+        self.detail_crumb.pack(side="left", padx=(10, 0))
+
+        # title + status + flag
+        self.detail_title = ctk.CTkLabel(page, text="", font=self.bold, text_color=FG, anchor="w")
+        self.detail_title.grid(row=1, column=0, sticky="ew", padx=20, pady=(8, 0))
+        flag_row = ctk.CTkFrame(page, fg_color="transparent")
+        flag_row.grid(row=2, column=0, sticky="ew", padx=20, pady=(2, 0))
+        self.detail_status = ctk.CTkLabel(flag_row, text="", font=self.mono_s, text_color=MUTED)
+        self.detail_status.pack(side="left")
+        self.detail_flag = ctk.CTkLabel(flag_row, text="", font=self.mono, text_color="#79d98a")
+        self.detail_flag.pack(side="left", padx=(16, 0))
+        ctk.CTkButton(flag_row, text="复制", width=52, height=24, font=self.mono_s,
+                      command=self._copy_detail_flag).pack(side="right")
+
+        # tabs
+        self.detail_tabs = ctk.CTkSegmentedButton(page, values=["Findings", "Thinking", "题解"],
+                                                  command=self._switch_detail_tab)
+        self.detail_tabs.set("Findings")
+        self.detail_tabs.grid(row=3, column=0, sticky="w", padx=20, pady=(12, 4))
+
+        # content
+        self.detail_box = ctk.CTkTextbox(page, font=self.mono_s, wrap="word")
+        self.detail_box.grid(row=4, column=0, sticky="nsew", padx=20, pady=(0, 16))
+        return page
+
+    def _show_detail(self, session: Session) -> None:
+        self._detail_session = session
+        st = session.state
+        self.detail_crumb.configure(text=f"CTF 打题  ›  {session.title}")
+        self.detail_title.configure(text=f"{session.title}  ·  {session.category}")
+        self.detail_status.configure(text=STATUS_LABEL.get(st["status"], st["status"]),
+                                     text_color=STATUS_COLOR.get(st["status"], FG))
+        self._detail_flag = st.get("flag") or ""
+        self.detail_flag.configure(text=self._detail_flag or "—")
+        self.detail_tabs.set("Findings")
+        self._switch_detail_tab("Findings")
+        for key, p in self.pages.items():
+            p.grid_remove()
+        self.pages["detail"].grid(row=0, column=0, sticky="nsew")
+        for key, btn in self._menu_btns.items():
+            btn.configure(fg_color="transparent")
+
+    def _switch_detail_tab(self, tab: str) -> None:
+        if self._detail_session is None:
+            return
+        st = self._detail_session.state
+        if tab == "Findings":
+            text = "\n".join(f"- {p}" for p in (st.get("paths") or [])) or "—"
+        elif tab == "Thinking":
+            text = st.get("thinking") or "—"
+        else:  # 题解
+            text = st.get("writeup") or "（解题成功后自动生成）"
+        self.detail_box.configure(state="normal")
+        self.detail_box.delete("1.0", "end")
+        self.detail_box.insert("end", text)
+        self.detail_box.configure(state="disabled")
+
+    def _copy_detail_flag(self) -> None:
+        self._copy(self._detail_flag or "")
 
     # =====================================================================
     #  page: CTF 打题
@@ -291,7 +368,7 @@ class ConsoleApp:
         act = ctk.CTkFrame(row, fg_color="transparent")
         act.grid(row=0, column=3, padx=6, pady=2)
         ctk.CTkButton(act, text="查看", width=52, height=26, font=self.mono_s,
-                      command=lambda s=session: self._view_detail(s)).pack(side="left", padx=2)
+                      command=lambda s=session: self._show_detail(s)).pack(side="left", padx=2)
         if session.is_running():
             ctk.CTkButton(act, text="停止", width=52, height=26, font=self.mono_s,
                           fg_color=DANGER, hover_color=DANGER_HOVER,
@@ -322,42 +399,6 @@ class ConsoleApp:
         self.root.clipboard_append(text)
 
     # ---- row actions -----------------------------------------------------
-    def _view_detail(self, session: Session) -> None:
-        self.manager.load_transcript(session)
-        st = session.state
-        paths = "\n".join(f"  - {p}" for p in (st.get("paths") or [])) or "—"
-        tools = ", ".join(f"{k}×{v}" for k, v in (st.get("tools_used") or {}).items()) or "—"
-        flag = st.get("flag") or "—"
-        writeup = st.get("writeup") or "（未生成）"
-
-        win = ctk.CTkToplevel(self.root)
-        win.title(session.title)
-        win.geometry("680x560")
-        win.transient(self.root)
-        win.grab_set()
-        head = ctk.CTkLabel(win, text=f"{session.title}  ·  {session.category}", font=self.bold,
-                            text_color=FG, anchor="w")
-        head.pack(fill="x", padx=20, pady=(18, 6))
-        ctk.CTkLabel(win, text=STATUS_LABEL.get(st["status"], st["status"]),
-                     text_color=STATUS_COLOR.get(st["status"], FG), font=self.mono_s,
-                     anchor="w").pack(fill="x", padx=20)
-        flag_row = ctk.CTkFrame(win, fg_color="transparent")
-        flag_row.pack(fill="x", padx=20, pady=(8, 0))
-        ctk.CTkLabel(flag_row, text=f"FLAG  {flag}", text_color="#79d98a", font=self.mono,
-                     anchor="w", justify="left").pack(side="left", fill="x", expand=True)
-        ctk.CTkButton(flag_row, text="复制", width=56, height=26, font=self.mono_s,
-                      command=lambda: self._copy(flag)).pack(side="right")
-
-        box = ctk.CTkTextbox(win, font=self.mono_s, wrap="word")
-        box.pack(fill="both", expand=True, padx=20, pady=12)
-        box.insert("end", (
-            f"replies: {st.get('replies', 0)}   tool calls: {st.get('tool_calls', 0)}\n"
-            f"耗时: {session.elapsed():.0f}s   工具: {tools}\n\n"
-            f"Findings:\n{paths}\n\n"
-            f"题解:\n{writeup}\n"
-        ))
-        box.configure(state="disabled")
-
     def _stop_session(self, session: Session) -> None:
         if session.is_running():
             self.manager.stop(session)
