@@ -346,6 +346,11 @@ class Manager:
     def failed_ids(self) -> set[str]:
         return {r[0] for r in self._db.execute("SELECT challenge_id FROM failed_challenges")}
 
+    def remove_failed(self, challenge_id: str) -> None:
+        """Allow a specific challenge to be retried by removing it from the blacklist."""
+        self._db.execute("DELETE FROM failed_challenges WHERE challenge_id=?", (str(challenge_id),))
+        self._db.commit()
+
     def clear_failed(self) -> None:
         self._db.execute("DELETE FROM failed_challenges")
         self._db.commit()

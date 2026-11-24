@@ -78,6 +78,7 @@ class ConsoleApp:
         self.manager = manager
         self.poll_ms = poll_ms
         self._auto_slots: list[dict[str, Any]] = []
+        self._retry_queue: queue.Queue = queue.Queue()
         self._search_text = ""
         self._status_filter = "全部"
         self._page = 0
@@ -290,12 +291,15 @@ class ConsoleApp:
         act.grid(row=0, column=3, padx=6, pady=2)
         ctk.CTkButton(act, text="查看", width=52, height=26, font=self.mono_s,
                       command=lambda s=session: self._view_detail(s)).pack(side="left", padx=2)
-        stop = ctk.CTkButton(act, text="停止", width=52, height=26, font=self.mono_s,
-                             fg_color=DANGER, hover_color=DANGER_HOVER,
-                             command=lambda s=session: self._stop_session(s))
-        if not session.is_running():
-            stop.configure(state="disabled", fg_color="#2a2f3a", hover_color="#2a2f3a")
-        stop.pack(side="left", padx=2)
+        if session.is_running():
+            ctk.CTkButton(act, text="停止", width=52, height=26, font=self.mono_s,
+                          fg_color=DANGER, hover_color=DANGER_HOVER,
+                          command=lambda s=session: self._stop_session(s)).pack(side="left", padx=2)
+        elif (session.spec.get("platform_challenge_id")
+              and session.state["status"] in ("done", "failed", "error", "cancelled")):
+            ctk.CTkButton(act, text="重试", width=52, height=26, font=self.mono_s,
+                          fg_color="#2a3648", hover_color=ACCENT,
+                          command=lambda s=session: self._retry_challenge(s)).pack(side="left", padx=2)
         ctk.CTkButton(act, text="删除", width=52, height=26, font=self.mono_s,
                       fg_color=DANGER, hover_color=DANGER_HOVER,
                       command=lambda s=session: self._delete_session(s)).pack(side="left", padx=2)
@@ -381,6 +385,53 @@ class ConsoleApp:
             self.manager.delete(s)
         self._table_sig = None
         self._render_table()
+
+    def _retry_challenge(self, session: Session) -> None:
+        """Retry ONE failed challenge: un-blacklist it and re-fetch + re-solve it."""
+        spec = session.spec or {}
+        cid = spec.get("platform_challenge_id")
+        gid = spec.get("platform_ground_id")
+        if not cid or not gid:
+            messagebox.showinfo("重试", "这个 session 没有平台题目信息，无法自动重试。", parent=self.root)
+            return
+        if not messagebox.askyesno("重试", f"重新解 “{session.title}”？会重新起环境并重试一次。",
+                                   parent=self.root):
+            return
+        self.manager.remove_failed(str(cid))
+        threading.Thread(target=self._retry_worker,
+                         args=(cid, gid, session.category, session.title), daemon=True).start()
+
+    def _retry_worker(self, cid: str, gid: str, category: str, title: str) -> None:
+        try:
+            from core.autosolve import prepare_challenge
+            from core.platform import PlatformClient
+            client = PlatformClient()
+            try:
+                item = {"id": cid, "practice_ground_id": gid,
+                        "category": str(category).upper(), "name": title}
+                spec, meta = prepare_challenge(client, item)
+                spec = dict(spec)
+                spec["platform_challenge_id"] = cid
+                spec["platform_ground_id"] = gid
+                self._retry_queue.put(("spec", spec, meta))
+            finally:
+                client.close()
+        except Exception as e:
+            self._retry_queue.put(("error", f"{title}: {e}"))
+
+    def _drain_retry_queue(self) -> None:
+        while True:
+            try:
+                item = self._retry_queue.get_nowait()
+            except queue.Empty:
+                break
+            kind = item[0] if isinstance(item, tuple) else None
+            if kind == "spec" and len(item) >= 3:
+                spec, meta = item[1], item[2]
+                self.manager.new_session(spec, meta["name"], meta["category"])
+            elif kind == "error":
+                print(f"[retry] {item[1] if len(item) > 1 else 'error'}")
+            self._table_sig = None
 
     # =====================================================================
     #  autosolve (unchanged control loop, re-homed to the new toolbar)
@@ -493,6 +544,11 @@ class ConsoleApp:
                 self._table_sig = None
             elif kind == "spec":
                 spec, meta = result[1]
+                # remember which platform challenge this session maps to, so the user can
+                # retry this ONE challenge later (un-blacklist + re-fetch) without clearing all.
+                spec = dict(spec)
+                spec["platform_challenge_id"] = meta["challenge_id"]
+                spec["platform_ground_id"] = meta["ground_id"]
                 pending = slot.get("pending")
                 if pending is not None:
                     self.manager.start_pending_session(pending, spec)
@@ -800,6 +856,7 @@ class ConsoleApp:
     def _poll(self) -> None:
         try:
             self.manager.drain_all()
+            self._drain_retry_queue()
             self._autosolve_step()
         except Exception:
             import traceback
