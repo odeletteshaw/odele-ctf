@@ -18,6 +18,7 @@ the Manager (gui/manager.py); this module only renders and drives them.
 import queue
 import signal
 import threading
+import time
 import tkinter as tk
 import tkinter.filedialog as filedialog
 import tkinter.messagebox as messagebox
@@ -393,49 +394,55 @@ class ConsoleApp:
         threading.Thread(target=self._retry_worker, args=(session,), daemon=True).start()
 
     def _retry_worker(self, session: Session) -> None:
-        try:
-            spec = session.spec or {}
-            cid = spec.get("platform_challenge_id")
-            gid = spec.get("platform_ground_id")
-            if not cid or not gid:
-                resolved = self._resolve_platform_id(session.title, session.category)
-                if not resolved:
-                    self._retry_queue.put(("error", f"{session.title}: 找不到平台题目信息"))
-                    return
-                cid, gid = resolved
-            from core.autosolve import prepare_challenge
-            from core.platform import PlatformClient
-            client = PlatformClient()
+        # Transient SSL/network blips are common; retry the fetch a few times with backoff.
+        for attempt in range(3):
             try:
-                item = {"id": cid, "practice_ground_id": gid,
-                        "category": str(session.category).upper(), "name": session.title}
-                new_spec, meta = prepare_challenge(client, item)
-                new_spec = dict(new_spec)
-                new_spec["platform_challenge_id"] = cid
-                new_spec["platform_ground_id"] = gid
-                self._retry_queue.put(("spec", new_spec, meta, str(cid)))
-            finally:
-                client.close()
-        except Exception as e:
-            self._retry_queue.put(("error", f"{session.title}: {e}"))
+                spec = session.spec or {}
+                cid = spec.get("platform_challenge_id")
+                gid = spec.get("platform_ground_id")
+                if not cid or not gid:
+                    resolved = self._resolve_platform_id(session.title, session.category)
+                    if resolved is None:
+                        self._retry_queue.put(("error", f"{session.title}: 找不到平台题目信息"))
+                        return
+                    cid, gid = resolved
+                from core.autosolve import prepare_challenge
+                from core.platform import PlatformClient
+                client = PlatformClient()
+                try:
+                    item = {"id": cid, "practice_ground_id": gid,
+                            "category": str(session.category).upper(), "name": session.title}
+                    new_spec, meta = prepare_challenge(client, item)
+                    new_spec = dict(new_spec)
+                    new_spec["platform_challenge_id"] = cid
+                    new_spec["platform_ground_id"] = gid
+                    self._retry_queue.put(("spec", new_spec, meta, str(cid)))
+                finally:
+                    client.close()
+                return  # success
+            except Exception as e:
+                if attempt == 2:
+                    self._retry_queue.put(("error", f"{session.title}: {e}"))
+                    return
+                time.sleep(5 * (attempt + 1))
 
     def _resolve_platform_id(self, title: str, category: str) -> tuple[str, str] | None:
-        """Find a challenge's (challenge_id, ground_id) by matching its name."""
+        """Find a challenge's (challenge_id, ground_id) by matching its name.
+
+        Returns None only when the title genuinely isn't in next_challenges; network
+        errors propagate so the caller can retry."""
+        from core.autosolve import PLATFORM_CATEGORY
+        from core.platform import PlatformClient
+        client = PlatformClient()
         try:
-            from core.autosolve import PLATFORM_CATEGORY
-            from core.platform import PlatformClient
-            client = PlatformClient()
-            try:
-                nc = client.next_challenges(limit=200, category=PLATFORM_CATEGORY.get(category))
-                items = nc.get("items") or []
-                for it in items:
-                    if str(it.get("name")) == title:
-                        return (str(it.get("id")), str(it.get("practice_ground_id")))
-            finally:
-                client.close()
-        except Exception as e:
-            print(f"[retry] resolve: {e}")
-        return None
+            nc = client.next_challenges(limit=200, category=PLATFORM_CATEGORY.get(category))
+            items = nc.get("items") or []
+            for it in items:
+                if str(it.get("name")) == title:
+                    return (str(it.get("id")), str(it.get("practice_ground_id")))
+            return None
+        finally:
+            client.close()
 
     def _drain_retry_queue(self) -> None:
         while True:
