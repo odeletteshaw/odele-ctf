@@ -80,6 +80,7 @@ class ConsoleApp:
         self.poll_ms = poll_ms
         self._auto_slots: list[dict[str, Any]] = []
         self._retry_queue: queue.Queue = queue.Queue()
+        self._retry_submits: dict[int, dict] = {}
         self._search_text = ""
         self._status_filter = "全部"
         self._page = 0
@@ -491,12 +492,48 @@ class ConsoleApp:
             if kind == "spec" and len(item) >= 4:
                 spec, meta, cid = item[1], item[2], item[3]
                 self.manager.remove_failed(cid)
-                self.manager.new_session(spec, meta["name"], meta["category"])
+                session = self.manager.new_session(spec, meta["name"], meta["category"])
+                # remember how to submit + free the env once this retry session finishes
+                self._retry_submits[session.id] = meta
             elif kind == "error":
                 msg = item[1] if len(item) > 1 else "error"
                 print(f"[retry] {msg}")
                 messagebox.showinfo("重试失败", msg, parent=self.root)
             self._table_sig = None
+
+    def _check_retry_submits(self) -> None:
+        """Submit the flag for retry sessions that just finished, then free their env."""
+        for sid, meta in list(self._retry_submits.items()):
+            session = next((s for s in self.manager.sessions if s.id == sid), None)
+            if session is None:
+                self._retry_submits.pop(sid, None)
+                continue
+            if not session.state["done"]:
+                continue
+            self._retry_submits.pop(sid, None)
+            flag = session.state.get("flag")
+            threading.Thread(target=self._finalize_retry, args=(meta, flag), daemon=True).start()
+
+    def _finalize_retry(self, meta: dict, flag: str | None) -> None:
+        try:
+            from core.platform import PlatformClient, PlatformError
+            client = PlatformClient()
+            try:
+                if flag:
+                    try:
+                        client.submit_flag(meta["ground_id"], meta["challenge_id"], flag)
+                    except PlatformError as e:
+                        print(f"[retry submit] rejected: {e.code}")
+                client.log_note(meta["challenge_id"], "result",
+                                (f"solved: {flag}" if flag else "no flag")[:2000])
+            finally:
+                try:
+                    client.delete_environment(meta["ground_id"], meta["challenge_id"])
+                except Exception:
+                    pass
+                client.close()
+        except Exception as e:
+            print(f"[retry] finalize: {e}")
 
     # =====================================================================
     #  autosolve (unchanged control loop, re-homed to the new toolbar)
@@ -922,6 +959,7 @@ class ConsoleApp:
         try:
             self.manager.drain_all()
             self._drain_retry_queue()
+            self._check_retry_submits()
             self._autosolve_step()
         except Exception:
             import traceback
