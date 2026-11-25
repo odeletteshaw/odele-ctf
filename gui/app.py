@@ -562,36 +562,46 @@ class ConsoleApp:
         self._open_autosolve_dialog()
 
     def _open_autosolve_dialog(self) -> None:
+        from core.platform import list_tokens
+        tokens = list_tokens()
+
         win = ctk.CTkToplevel(self.root)
         win.title("开始打题")
-        win.geometry("420x360")
+        win.geometry("600x520")
         win.transient(self.root)
         win.grab_set()
 
+        ctk.CTkLabel(win, text="开始打题", font=self.bold).pack(anchor="w", padx=28, pady=(24, 12))
+
         ctk.CTkLabel(win, text="方向（多选）", font=self.bold_s, text_color=MUTED).pack(
-            anchor="w", padx=24, pady=(20, 4))
+            anchor="w", padx=28, pady=(0, 6))
         drow = ctk.CTkFrame(win, fg_color="transparent")
-        drow.pack(anchor="w", padx=20, pady=(2, 10))
+        drow.pack(anchor="w", padx=24, pady=(0, 14))
         boxes: dict[str, tk.BooleanVar] = {}
         for d in ("web", "crypto", "misc", "forensics"):
-            var = tk.BooleanVar(value=(d in ("web", "crypto", "forensics")))
+            var = tk.BooleanVar(value=False)  # no default selection — user picks
             boxes[d] = var
-            ctk.CTkCheckBox(drow, text=d, variable=var).pack(side="left", padx=6)
+            ctk.CTkCheckBox(drow, text=d, variable=var).pack(side="left", padx=8)
 
         ctk.CTkLabel(win, text="难度", font=self.bold_s, text_color=MUTED).pack(
-            anchor="w", padx=24, pady=(6, 2))
+            anchor="w", padx=28, pady=(0, 4))
         diff_seg = ctk.CTkSegmentedButton(win, values=["不限", "简单", "中等", "困难"])
         diff_seg.set("不限")
-        diff_seg.pack(anchor="w", padx=24, pady=(2, 8))
+        diff_seg.pack(anchor="w", padx=28, pady=(0, 14))
 
-        ctk.CTkLabel(win, text="每个方向最多解几道（0 = 不限）", font=self.bold_s,
-                     text_color=MUTED).pack(anchor="w", padx=24, pady=(4, 2))
-        max_entry = ctk.CTkEntry(win, width=120, font=self.mono)
+        ctk.CTkLabel(win, text="每个 token 最多解几道（0 = 不限）", font=self.bold_s,
+                     text_color=MUTED).pack(anchor="w", padx=28, pady=(0, 4))
+        max_entry = ctk.CTkEntry(win, width=160, font=self.mono)
         max_entry.insert(0, "3")
-        max_entry.pack(anchor="w", padx=24, pady=(2, 8))
+        max_entry.pack(anchor="w", padx=28, pady=(0, 14))
+
+        info = (f"将使用 {len(tokens)} 个 token 并行：每个方向 × 每个 token 各起一个 "
+                f"session，同时解 {len(tokens)} 道题。")
+        ctk.CTkLabel(win, text=info, text_color=MUTED, font=self.mono_s, wraplength=540,
+                     justify="left").pack(anchor="w", padx=28, pady=(0, 10))
 
         hint = ctk.CTkLabel(win, text="", text_color="#ff6b6b", font=self.mono_s)
-        hint.pack(anchor="w", padx=24, pady=(4, 0))
+        hint.pack(anchor="w", padx=28, pady=(4, 0))
 
         def start() -> None:
             directions = [d for d, v in boxes.items() if v.get()]
@@ -606,8 +616,8 @@ class ConsoleApp:
             win.destroy()
             self._start_autosolve(directions, maxn, diff)
 
-        ctk.CTkButton(win, text="开始 ▶", height=40, width=140, command=start).pack(
-            anchor="w", padx=24, pady=(12, 20))
+        ctk.CTkButton(win, text="开始 ▶", height=42, width=150, command=start).pack(
+            anchor="w", padx=28, pady=(8, 24))
 
     def _start_autosolve(self, directions: list[str], maxn: int, diff: str | None) -> None:
         from core.platform import list_tokens
@@ -618,16 +628,16 @@ class ConsoleApp:
             return
         self._auto_slots = []
         persisted_failed = self.manager.failed_ids()
-        for i, direction in enumerate(directions):
-            if i >= len(tokens):
-                break
-            self._auto_slots.append({
-                "running": True, "direction": direction, "token": tokens[i],
-                "tokens": tokens, "token_index": i,
-                "max": maxn, "difficulty": diff, "done": 0,
-                "failed": set(persisted_failed),
-                "current": None, "current_meta": None, "phase": "idle", "queue": queue.Queue(),
-            })
+        # one slot per (direction × token), so N tokens solve N challenges in parallel.
+        for direction in directions:
+            for j, token in enumerate(tokens):
+                self._auto_slots.append({
+                    "running": True, "direction": direction, "token": token,
+                    "tokens": tokens, "token_index": j,
+                    "max": maxn, "difficulty": diff, "done": 0,
+                    "failed": set(persisted_failed),
+                    "current": None, "current_meta": None, "phase": "idle", "queue": queue.Queue(),
+                })
         self.btn_auto.configure(text="⏹ 停止打题")
         self._table_sig = None
         self._render_table()
