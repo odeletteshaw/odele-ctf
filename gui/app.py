@@ -82,6 +82,8 @@ class ConsoleApp:
         self._auto_slots: list[dict[str, Any]] = []
         self._retry_queue: queue.Queue = queue.Queue()
         self._retry_submits: dict[int, dict] = {}
+        self._claimed: set[str] = set()
+        self._claimed_lock = threading.Lock()
         self._search_text = ""
         self._status_filter = "全部"
         self._page = 0
@@ -630,6 +632,7 @@ class ConsoleApp:
                                    parent=self.root)
             return
         self._auto_slots = []
+        self._claimed = set()  # reset the claim set on a fresh run
         persisted_failed = self.manager.failed_ids()
         # one slot per (direction × token), so N tokens solve N challenges in parallel.
         for direction in directions:
@@ -750,9 +753,17 @@ class ConsoleApp:
                 )
                 items = nc.get("items") or []
                 failed = slot.get("failed") or set()
-                item = next((it for it in items
-                             if str(it.get("category", "")).lower() == slot["direction"]
-                             and str(it.get("id")) not in failed), None)
+                # Claim the first unclaimed challenge for this direction, so two parallel
+                # slots never solve the same challenge (tokens' queues can overlap).
+                item = None
+                with self._claimed_lock:
+                    for it in items:
+                        cid = str(it.get("id"))
+                        if (str(it.get("category", "")).lower() == slot["direction"]
+                                and cid not in failed and cid not in self._claimed):
+                            self._claimed.add(cid)
+                            item = it
+                            break
                 if item is None:
                     slot["queue"].put(("stop", f"{slot['direction']} 没有未解的题了"))
                     return
