@@ -445,6 +445,12 @@ class ConsoleApp:
         if not messagebox.askyesno("重试", f"重新解 “{session.title}”？会重新起环境并重试一次。",
                                    parent=self.root):
             return
+        # mark "preparing" immediately so the UI reflects the retry during the fetch phase
+        session.state["status"] = "preparing"
+        session.state["done"] = False
+        self.manager.save()
+        self._table_sig = None
+        self._render_table()
         threading.Thread(target=self._retry_worker, args=(session,), daemon=True).start()
 
     def _retry_worker(self, session: Session) -> None:
