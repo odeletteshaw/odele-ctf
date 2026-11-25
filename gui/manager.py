@@ -107,6 +107,20 @@ class Session:
         self.state["status"] = "cancelled"
         self.state["done"] = True
 
+    def reset(self, spec: dict[str, Any]) -> None:
+        """Reuse this session (keeping its id) for a fresh attempt with a new spec."""
+        self.spec = spec
+        self.events = _CTX.Queue()
+        self._guidance = _CTX.Queue()
+        self._proc = None
+        self.started_at = None
+        self.transcript = []
+        self._loaded = True
+        self.state = {
+            "status": "idle", "replies": 0, "tool_calls": 0, "thinking": "",
+            "flag": None, "paths": [], "tools_used": {}, "writeup": "", "done": False,
+        }
+
     def send_guidance(self, text: str) -> None:
         text = text.strip()
         if text:

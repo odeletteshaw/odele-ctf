@@ -468,7 +468,7 @@ class ConsoleApp:
                     new_spec = dict(new_spec)
                     new_spec["platform_challenge_id"] = cid
                     new_spec["platform_ground_id"] = gid
-                    self._retry_queue.put(("spec", new_spec, meta, str(cid)))
+                    self._retry_queue.put(("spec", new_spec, meta, str(cid), session))
                 finally:
                     client.close()
                 return  # success
@@ -503,10 +503,13 @@ class ConsoleApp:
             except queue.Empty:
                 break
             kind = item[0] if isinstance(item, tuple) else None
-            if kind == "spec" and len(item) >= 4:
-                spec, meta, cid = item[1], item[2], item[3]
+            if kind == "spec" and len(item) >= 5:
+                spec, meta, cid, session = item[1], item[2], item[3], item[4]
                 self.manager.remove_failed(cid)
-                session = self.manager.new_session(spec, meta["name"], meta["category"])
+                # reuse the same session record (same id) instead of creating a new one
+                session.reset(spec)
+                session.start()
+                self.manager.save()
                 # remember how to submit + free the env once this retry session finishes
                 self._retry_submits[session.id] = meta
             elif kind == "error":
