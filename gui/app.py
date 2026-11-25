@@ -463,7 +463,8 @@ class ConsoleApp:
                 if not cid or not gid:
                     resolved = self._resolve_platform_id(session.title, session.category)
                     if resolved is None:
-                        self._retry_queue.put(("error", f"{session.title}: 找不到平台题目信息"))
+                        self._retry_queue.put(("error",
+                            f"{session.title}: 找不到平台题目信息（可能已解，或不在任何 token 的未解队列）"))
                         return
                     cid, gid = resolved
                 from core.autosolve import prepare_challenge
@@ -487,22 +488,25 @@ class ConsoleApp:
                 time.sleep(5 * (attempt + 1))
 
     def _resolve_platform_id(self, title: str, category: str) -> tuple[str, str] | None:
-        """Find a challenge's (challenge_id, ground_id) by matching its name.
+        """Find a challenge's (challenge_id, ground_id) by matching its name across tokens.
 
-        Returns None only when the title genuinely isn't in next_challenges; network
-        errors propagate so the caller can retry."""
+        Returns None only when the title isn't in any token's next_challenges (e.g. it's
+        already solved, or in no queue); network errors propagate so the caller can retry."""
         from core.autosolve import PLATFORM_CATEGORY
-        from core.platform import PlatformClient
-        client = PlatformClient()
-        try:
-            nc = client.next_challenges(limit=200, category=PLATFORM_CATEGORY.get(category))
-            items = nc.get("items") or []
-            for it in items:
-                if str(it.get("name")) == title:
-                    return (str(it.get("id")), str(it.get("practice_ground_id")))
-            return None
-        finally:
-            client.close()
+        from core.platform import PlatformClient, list_tokens
+        for tok in list_tokens():
+            client = PlatformClient(token=tok)
+            try:
+                nc = client.next_challenges(limit=200, category=PLATFORM_CATEGORY.get(category))
+                items = nc.get("items") or []
+                for it in items:
+                    if str(it.get("name")) == title:
+                        return (str(it.get("id")), str(it.get("practice_ground_id")))
+            except Exception:
+                pass  # try the next token
+            finally:
+                client.close()
+        return None
 
     def _drain_retry_queue(self) -> None:
         while True:
