@@ -39,15 +39,31 @@ def _throttled_start(client: PlatformClient, ground_id, challenge_id) -> dict:
     return client.start_environment(ground_id, challenge_id)
 
 
+def _tcp_mode_url(u: str) -> str | None:
+    """DAS CTF2 also exposes a TCP-mode endpoint that bypasses the OpenResty proxy
+    (which overwrites X-Forwarded-For). Derive it from an HTTP access URL:
+    http://<id>.http-ctf2.dasctf.com:80 -> https://<id>.tcp-ctf2.dasctf.com:9999"""
+    if ".http-ctf2.dasctf.com" not in u:
+        return None
+    host = u.split("//")[1].split("/")[0].split(":")[0]
+    return f"https://{host.replace('http-ctf2', 'tcp-ctf2')}:9999"
+
+
 def _access_urls(env: dict) -> list[str]:
     urls: list[str] = []
     u = env.get("access_url")
     if u:
         urls.append(u)
+        tcp = _tcp_mode_url(u)
+        if tcp and tcp not in urls:
+            urls.append(tcp)
     for au in env.get("access_urls") or []:
         uu = au.get("url")
         if uu and uu not in urls:
             urls.append(uu)
+            tcp = _tcp_mode_url(uu)
+            if tcp and tcp not in urls:
+                urls.append(tcp)
     return urls
 
 

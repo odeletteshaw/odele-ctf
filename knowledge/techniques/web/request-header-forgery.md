@@ -29,5 +29,8 @@ Referer、User-Agent、以及来源 IP 头（`X-Forwarded-For` 等）。IP 头�
 
 - **前置代理（nginx/CDN）常覆盖 `X-Forwarded-For`**，把它改成真实客户端 IP。所以某个 IP 头试了
   没效果时，**换下一个变体**，不要卡死或跳到「必须 SSRF」——绝大多数「本地访问」题靠伪造 IP 头就能解。
+- **DAS CTF2 有 TCP 端点**：HTTP 端点（`*.http-ctf2.dasctf.com:80`）走 OpenResty 会篡改
+  `X-Forwarded-For`；把 URL 换成 TCP 端点（`*.tcp-ctf2.dasctf.com:9999`，HTTPS）直连后端，头就不会
+  被改。target 列表里如果有 tcp-ctf2 地址，XFF 失败就切过去试。
 - 可以一次性把多个 IP 头都设成 `127.0.0.1` 一起发；若仍被拒，再单独逐个试那些少见头。
 - 一层校验一个响应，务必读完整个 body 的报错变化，再决定加哪个头。
