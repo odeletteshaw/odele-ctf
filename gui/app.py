@@ -623,6 +623,7 @@ class ConsoleApp:
                 break
             self._auto_slots.append({
                 "running": True, "direction": direction, "token": tokens[i],
+                "tokens": tokens, "token_index": i,
                 "max": maxn, "difficulty": diff, "done": 0,
                 "failed": set(persisted_failed),
                 "current": None, "current_meta": None, "phase": "idle", "queue": queue.Queue(),
@@ -681,10 +682,18 @@ class ConsoleApp:
                 # "error" = this ONE challenge failed to prepare (its env didn't start,
                 # download failed, …) → skip it and keep going. "stop" = genuinely no more.
                 skip = kind == "error" and isinstance(result, tuple) and len(result) >= 3
+                exhausted = False
+                rotated = False
                 if skip:
                     item, msg = result[1], result[2]
                     slot.setdefault("failed", set()).add(str(item.get("id")))
                     self.manager.add_failed(str(item.get("id")), slot["direction"])
+                    # If the agent token's environment quota is exhausted (or the token is
+                    # disabled), rotate to the next token so the direction keeps going on a
+                    # fresh quota instead of spinning on the same doomed token.
+                    exhausted = "environment_limit" in msg or "agent_disabled" in msg
+                    if exhausted:
+                        rotated = self._rotate_token(slot, msg)
                 else:
                     msg = result[1] if isinstance(result, tuple) else "打题结束"
                 pending = slot.get("pending")
@@ -694,8 +703,8 @@ class ConsoleApp:
                     pending.transcript.append({"type": "status", "status": "error", "error": msg})
                     slot["pending"] = None
                     self.manager.save()
-                if skip:
-                    print(f"[autosolve:{slot['direction']}] skip: {msg}")
+                if skip and (not exhausted or rotated):
+                    print(f"[autosolve:{slot['direction']}] {'rotate' if rotated else 'skip'}: {msg}")
                     slot["phase"] = "idle"  # fetch the next challenge instead of stopping
                 else:
                     self._stop_slot(slot, msg)
@@ -704,6 +713,17 @@ class ConsoleApp:
             session = slot["current"]
             if session is not None and session.state["done"]:
                 self._submit_slot(slot)
+
+    def _rotate_token(self, slot: dict, msg: str) -> bool:
+        """Advance to the next available token after an env-limit / disabled error."""
+        tokens = slot.get("tokens") or [slot.get("token")]
+        idx = slot.get("token_index", 0) + 1
+        if idx < len(tokens):
+            slot["token_index"] = idx
+            slot["token"] = tokens[idx]
+            print(f"[autosolve:{slot['direction']}] {msg} → 切换到 token {idx}")
+            return True
+        return False
 
     def _autosolve_worker(self, slot: dict) -> None:
         try:
