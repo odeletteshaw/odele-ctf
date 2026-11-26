@@ -210,7 +210,7 @@ class Manager:
     def __init__(self, path: str | Path | None = None) -> None:
         self.path = Path(path) if path else (Path.home() / ".odele-ctf" / "sessions.db")
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._db = sqlite3.connect(str(self.path))
+        self._db = sqlite3.connect(str(self.path), check_same_thread=False)
         self._db.executescript(_SCHEMA)
         # migrate older DBs that predate the created_at column
         cols = [r[1] for r in self._db.execute("PRAGMA table_info(sessions)")]

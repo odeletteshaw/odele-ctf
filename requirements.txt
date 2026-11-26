@@ -8,3 +8,6 @@ fpylll==0.6.4
 cysignals==1.12.6
 numpy==2.5.4
 scipy==1.18.1
+
+fastapi==0.165.0
+uvicorn==0.54.0
