@@ -135,7 +135,8 @@ def web_tools_multi(
 
 
 def solve_web(
-    target: str, description: str, model: str | None = None, max_turns: int = 30
+    target: str, description: str, model: str | None = None, max_turns: int = 30,
+    on_event=None,
 ) -> SolveResult:
     client = new_http_client()
     try:
@@ -145,6 +146,7 @@ def solve_web(
             f"Target: {target}\n\nChallenge description: {description}",
             model=model,
             max_turns=max_turns,
+            on_event=on_event,
         )
     finally:
         client.close()

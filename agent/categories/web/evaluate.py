@@ -64,8 +64,8 @@ def _make(module, flag):
     return module.start(flag)  # (server, url)
 
 
-def _solve(server_and_url, description):
-    return solve_web(server_and_url[1], description)
+def _solve(server_and_url, description, on_event=None):
+    return solve_web(server_and_url[1], description, on_event=on_event)
 
 
 def _cleanup(server_and_url):

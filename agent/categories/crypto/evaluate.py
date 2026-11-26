@@ -70,11 +70,11 @@ def _make(module, flag):
     return module.make(flag)
 
 
-def _solve(target, _description):
+def _solve(target, _description, on_event=None):
     if isinstance(target, tuple):  # oracle challenge: (oracle, text)
         oracle, text = target
-        return solve_crypto_oracle(oracle, text)
-    return solve_crypto(target)
+        return solve_crypto_oracle(oracle, text, on_event=on_event)
+    return solve_crypto(target, on_event=on_event)
 
 
 if __name__ == "__main__":

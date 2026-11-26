@@ -26,8 +26,8 @@ def _make(module, flag):
     return module.make(flag)
 
 
-def _solve(target, description):
-    return solve_reverse(target, description)
+def _solve(target, description, on_event=None):
+    return solve_reverse(target, description, on_event=on_event)
 
 
 def _cleanup(target):

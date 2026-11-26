@@ -43,8 +43,9 @@ def pwn_tools(proc: Process) -> list[Tool]:
 
 
 def solve_pwn(proc: Process, description: str, model: str | None = None,
-              max_turns: int = 30) -> SolveResult:
-    return solve(pwn_tools(proc), SYSTEM_PROMPT, description, model=model, max_turns=max_turns)
+              max_turns: int = 30, on_event=None) -> SolveResult:
+    return solve(pwn_tools(proc), SYSTEM_PROMPT, description, model=model,
+                 max_turns=max_turns, on_event=on_event)
 
 
 def main() -> None:

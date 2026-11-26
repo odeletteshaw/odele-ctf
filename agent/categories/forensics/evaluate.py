@@ -32,10 +32,10 @@ def _make(module, flag):
     return module.make(flag)
 
 
-def _solve(target, description):
+def _solve(target, description, on_event=None):
     if isinstance(target, Workspace):
-        return solve_forensics_workspace(target, description)
-    return solve_forensics(target)
+        return solve_forensics_workspace(target, description, on_event=on_event)
+    return solve_forensics(target, on_event=on_event)
 
 
 def _cleanup(target):

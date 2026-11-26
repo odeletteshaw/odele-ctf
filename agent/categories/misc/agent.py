@@ -21,8 +21,10 @@ Read the challenge carefully, experiment, and compute the answer.
 Flags look like flag{...}. Print the flag and end your final message with it on its own line."""
 
 
-def solve_misc(challenge_text: str, model: str | None = None, max_turns: int = 30) -> SolveResult:
-    return solve([python_tool()], SYSTEM_PROMPT, challenge_text, model=model, max_turns=max_turns)
+def solve_misc(challenge_text: str, model: str | None = None, max_turns: int = 30,
+               on_event=None) -> SolveResult:
+    return solve([python_tool()], SYSTEM_PROMPT, challenge_text, model=model,
+                 max_turns=max_turns, on_event=on_event)
 
 
 JAIL_SYSTEM_PROMPT = """You are escaping a restricted Python 'jail'. Your tools:
@@ -51,9 +53,9 @@ def code_tool(jail) -> Tool:
 
 
 def solve_misc_jail(jail, challenge_text: str, model: str | None = None,
-                    max_turns: int = 30) -> SolveResult:
+                    max_turns: int = 30, on_event=None) -> SolveResult:
     return solve([code_tool(jail), python_tool()], JAIL_SYSTEM_PROMPT, challenge_text,
-                 model=model, max_turns=max_turns)
+                 model=model, max_turns=max_turns, on_event=on_event)
 
 
 def main() -> None:

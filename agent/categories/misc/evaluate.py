@@ -26,10 +26,10 @@ def _make(module, flag):
     return module.make(flag)
 
 
-def _solve(target, _description):
+def _solve(target, _description, on_event=None):
     if hasattr(target, "run"):  # jail challenge: an object with a run(code) method
-        return solve_misc_jail(target, _description)
-    return solve_misc(target)
+        return solve_misc_jail(target, _description, on_event=on_event)
+    return solve_misc(target, on_event=on_event)
 
 
 if __name__ == "__main__":

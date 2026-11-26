@@ -29,8 +29,8 @@ def _make(module, flag):
     return module.make(flag)
 
 
-def _solve(proc, description):
-    return solve_pwn(proc, description)
+def _solve(proc, description, on_event=None):
+    return solve_pwn(proc, description, on_event=on_event)
 
 
 if __name__ == "__main__":

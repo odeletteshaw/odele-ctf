@@ -50,8 +50,10 @@ DIAGNOSTIC = """When stuck or repeating yourself, run these checks before anythi
 - numpy/scipy are available for vectorized correlation attacks and linear algebra."""
 
 
-def solve_crypto(challenge_text: str, model: str | None = None, max_turns: int = 30) -> SolveResult:
-    return solve([python_tool()], SYSTEM_PROMPT, challenge_text, model=model, max_turns=max_turns)
+def solve_crypto(challenge_text: str, model: str | None = None, max_turns: int = 30,
+                 on_event=None) -> SolveResult:
+    return solve([python_tool()], SYSTEM_PROMPT, challenge_text, model=model,
+                 max_turns=max_turns, on_event=on_event)
 
 
 ORACLE_SYSTEM_PROMPT = """You are breaking a crypto challenge that exposes an INTERACTIVE ORACLE.
@@ -78,7 +80,7 @@ Flags look like flag{...}. Print the flag and end your final message with it on 
 
 
 def solve_crypto_oracle(oracle, challenge_text: str, model: str | None = None,
-                        max_turns: int = 60) -> SolveResult:
+                        max_turns: int = 60, on_event=None) -> SolveResult:
     tool = oracle_tool(
         "query_oracle",
         "Query the target oracle with a batch of inputs (hex) and get one answer per input.",
@@ -86,7 +88,7 @@ def solve_crypto_oracle(oracle, challenge_text: str, model: str | None = None,
         "ciphertext",
     )
     return solve([tool, python_tool()], ORACLE_SYSTEM_PROMPT, challenge_text,
-                 model=model, max_turns=max_turns)
+                 model=model, max_turns=max_turns, on_event=on_event)
 
 
 def main() -> None:

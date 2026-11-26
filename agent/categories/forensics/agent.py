@@ -49,14 +49,15 @@ Flags look like flag{...}. Print the flag and end your final message with it on 
 
 
 def solve_forensics(challenge_text: str, model: str | None = None,
-                    max_turns: int = 30) -> SolveResult:
-    return solve([python_tool()], SYSTEM_PROMPT, challenge_text, model=model, max_turns=max_turns)
+                    max_turns: int = 30, on_event=None) -> SolveResult:
+    return solve([python_tool()], SYSTEM_PROMPT, challenge_text, model=model,
+                 max_turns=max_turns, on_event=on_event)
 
 
 def solve_forensics_workspace(ws, description: str, model: str | None = None,
-                              max_turns: int = 30) -> SolveResult:
+                              max_turns: int = 30, on_event=None) -> SolveResult:
     return solve([python_tool(ws.dir)], WORKSPACE_SYSTEM_PROMPT, description,
-                 model=model, max_turns=max_turns)
+                 model=model, max_turns=max_turns, on_event=on_event)
 
 
 def main() -> None:

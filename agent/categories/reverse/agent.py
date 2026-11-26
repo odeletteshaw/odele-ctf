@@ -76,8 +76,10 @@ def solve_reverse(
     description: str,
     model: str | None = None,
     max_turns: int = 30,
+    on_event=None,
 ) -> SolveResult:
-    return solve(reverse_tools(target), SYSTEM_PROMPT, description, model=model, max_turns=max_turns)
+    return solve(reverse_tools(target), SYSTEM_PROMPT, description, model=model,
+                 max_turns=max_turns, on_event=on_event)
 
 
 def main() -> None:
