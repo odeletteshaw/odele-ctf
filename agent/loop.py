@@ -19,6 +19,13 @@ from . import config
 # Only '}' terminates the match, but keep out newlines and quotes so a stray "flag{…" in the
 # model's reasoning text is never captured as the whole paragraph.
 FLAG_PATTERN = re.compile(r"flag\{[^}\n\"']+\}")
+
+# A malformed tool call must not poison the conversation: echoing a huge argument blob
+# back as the tool error makes the next model turn imitate and re-wrap it (observed:
+# 8 KB -> 51 KB -> 514 KB, then 20 minutes of invalid JSON). Cap what we accept and
+# what we echo, and nudge after consecutive failures.
+MAX_TOOL_ARGS_CHARS = 20_000
+INVALID_ARGS_PREVIEW = 300
 # Fallback for targets whose flag uses a different keyword (ctf{...}, answer{...}, ...).
 # Require a >=3-char prefix so code/regex fragments like "d{11}", "s{14}", "n{2}" (from
 # \d{11}, s:14, ...) are never mistaken for a flag.
@@ -117,9 +124,10 @@ def run_loop(
     final_text = ""
     tool_calls = 0
     repeat_counts: dict[tuple[str, str], int] = {}
-    nudged_repeats: set[tuple[str, str]] = set()
+    last_output: dict[tuple[str, str], str] = {}
     agent_text_counts: dict[str, int] = {}
     flag_hint_sent = False
+    invalid_streak = 0
     for _ in range(max_turns):
         # Fold in any supervisor guidance before the model's next turn.
         if guidance and (note := guidance()):
@@ -168,14 +176,21 @@ def run_loop(
             }
             for call in message.tool_calls
         ]
+        # Keep an oversized argument blob out of the context we resend; the tool message
+        # carries the actionable error, so the echoed call can be truncated safely.
+        for call_dict in assistant["tool_calls"]:
+            args_text = call_dict["function"]["arguments"] or ""
+            if len(args_text) > MAX_TOOL_ARGS_CHARS:
+                call_dict["function"]["arguments"] = args_text[:2000] + "…[truncated]"
         messages.append(assistant)
         seen_this_turn: list[tuple[str, str]] = []
         found_in_output: str | None = None
         for call in message.tool_calls:
             tool_calls += 1
             raw_args = call.function.arguments or ""
+            oversized = len(raw_args) > MAX_TOOL_ARGS_CHARS
             try:
-                args = json.loads(raw_args or "{}")
+                args = None if oversized else json.loads(raw_args or "{}")
                 canon = json.dumps(args, sort_keys=True)
             except (json.JSONDecodeError, TypeError):
                 args = None
@@ -192,19 +207,51 @@ def run_loop(
                     pass
             repeat_counts[key] = repeat_counts.get(key, 0) + 1
             seen_this_turn.append(key)
-            if args is None:
-                output = f"Error: arguments were not valid JSON: {raw_args}"
+            if oversized:
+                invalid_streak += 1
+                output = (
+                    f"Error: tool arguments were too large ({len(raw_args)} chars; limit "
+                    f"{MAX_TOOL_ARGS_CHARS}; the call was not executed). Build long payloads "
+                    "in run_python and pass a compact value (hex/base64), not a giant literal."
+                )
+            elif args is None:
+                invalid_streak += 1
+                preview = (raw_args if len(raw_args) <= INVALID_ARGS_PREVIEW
+                           else raw_args[:INVALID_ARGS_PREVIEW] + "…")
+                output = (
+                    "Error: tool arguments were not valid JSON; the call was not executed. "
+                    "Re-send ONE minimal valid JSON object — do not wrap JSON inside a string. "
+                    f"Received (truncated): {preview}"
+                )
             else:
+                invalid_streak = 0
                 print(f"[{call.function.name}] {args}", flush=True)
                 emit({"type": "tool_call", "name": call.function.name, "args": args})
                 handler = handlers.get(call.function.name)
                 output = handler(args) if handler else f"Error: unknown tool {call.function.name}"
+            last_output[key] = " ".join(str(output).split())
             emit({"type": "tool_result", "name": call.function.name, "output": output})
             messages.append({"role": "tool", "tool_call_id": call.id, "content": output})
             if found_in_output is None and not flag_hint_sent:
                 matches = extract_flags(str(output), flag_pattern)
                 if matches:
                     found_in_output = matches[-1]
+        # Two bad argument blobs in a row usually means the model is imitating its own
+        # malformed output. Stop the spiral before it grows (and before it fills the context).
+        invalid_nudged = False
+        if invalid_streak >= 2:
+            invalid_nudged = True
+            invalid_streak = 0
+            note = (
+                "Your recent tool calls had invalid JSON arguments. Stop and send ONE minimal, "
+                "valid JSON call. Do not put JSON inside another JSON string; for a long "
+                "payload, compute it in run_python and pass a short hex/base64 value."
+            )
+            if diagnostic:
+                note += "\n\nDiagnostic checklist:\n" + diagnostic
+            messages.append({"role": "user", "content": note})
+            print("[nudge] invalid tool arguments — send minimal valid JSON", flush=True)
+            emit({"type": "guidance", "text": "(auto) invalid tool arguments — send minimal valid JSON"})
         # The flag may already be sitting in a tool result while the model keeps probing.
         # Tell it to report that value now; solve() only extracts the flag from the final
         # assistant message, so this nudge (not an early stop) is what converts it to PASS.
@@ -223,21 +270,35 @@ def run_loop(
         # supervisor note telling it to review its earlier findings and change tack instead of
         # burning the turn budget on the same doomed attempt. Once a flag has surfaced, the
         # "report it now" note above is the only instruction worth sending.
+        stalled = False
         for key in seen_this_turn:
-            if flag_hint_sent:
+            if flag_hint_sent or invalid_nudged:
                 break
-            if repeat_counts[key] >= 2 and key not in nudged_repeats:
-                nudged_repeats.add(key)
+            count = repeat_counts[key]
+            if count >= 10:
+                stalled = True
+                break
+            if count in (2, 5, 8):
+                # Escalate with evidence: quote the identical response so the model can see
+                # that replaying the request cannot produce a new result.
+                seen = last_output.get(key, "")[:200]
                 nudge = (
-                    "You have sent essentially the same request again (same endpoint/payload). "
-                    "If the response is not changing, repeating it will not give a new answer: "
-                    "re-check your payload and assumptions, then take a DIFFERENT step."
+                    f"You have sent this same request {count} times. The last response was: "
+                    f"{seen!r}. Repeating it will not change the answer. Recompute the payload "
+                    "from scratch in run_python — print the exact bytes/blocks you expect and "
+                    "verify the arithmetic — then send a DIFFERENT request."
                 )
                 if diagnostic:
                     nudge += "\n\nDiagnostic checklist:\n" + diagnostic
                 messages.append({"role": "user", "content": nudge})
-                print("[nudge] repeated call — try something different", flush=True)
-                emit({"type": "guidance", "text": "(auto) repeated call — try something different"})
+                print(f"[nudge] same request {count}x — response unchanged", flush=True)
+                emit({"type": "guidance",
+                      "text": f"(auto) same request {count}× — response unchanged"})
+        if stalled:
+            print("[loop] stalled on one repeated request, stopping", flush=True)
+            emit({"type": "guidance",
+                  "text": "(auto) stopped — same request repeated without progress"})
+            break
     return final_text, tool_calls
 
 
