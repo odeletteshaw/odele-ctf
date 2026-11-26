@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Box, Paper, Typography, Button, List, ListItem, ListItemText, Chip, Stack } from '@mui/material'
+import { Paper, Typography, Button, List, ListItem, ListItemText, Chip, Stack } from '@mui/material'
 import SaveIcon from '@mui/icons-material/Save'
 import { getTeam, saveTeam } from '../api.js'
 

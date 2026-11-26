@@ -34,11 +34,6 @@ def _system_with_techniques(system: str, category: str) -> str:
     return system
 
 
-def list_challenges(category: str) -> list[str]:
-    folder = Path(__file__).resolve().parent.parent / category / "challenges"
-    return sorted(p.stem for p in folder.glob("*.py") if not p.stem.startswith("_"))
-
-
 def _benchmark(category: str, name: str) -> Built:
     flag = f"flag{{{secrets.token_hex(12)}}}"
     challenge = importlib.import_module(f"{category}.challenges.{name}")
@@ -133,17 +128,12 @@ def _custom(spec: dict[str, Any]) -> Built:
 
         return None, tools, _system_with_techniques(web.SYSTEM_PROMPT, "web"), user, cleanup
 
-    if direction == "crypto":
-        crypto = importlib.import_module("crypto.agent")
+    if direction in ("crypto", "misc"):  # text-in, run_python-only categories
+        agent = importlib.import_module(f"{direction}.agent")
         tools = [python_tool(workdir)]
         user = f"{attachment_block}Challenge description: {description or '(none given)'}"
-        return None, tools, _system_with_techniques(crypto.SYSTEM_PROMPT, "crypto"), user, cleanup_workdir
-
-    if direction == "misc":
-        misc = importlib.import_module("misc.agent")
-        tools = [python_tool(workdir)]
-        user = f"{attachment_block}Challenge description: {description or '(none given)'}"
-        return None, tools, _system_with_techniques(misc.SYSTEM_PROMPT, "misc"), user, cleanup_workdir
+        return None, tools, _system_with_techniques(agent.SYSTEM_PROMPT, direction), \
+            user, cleanup_workdir
 
     if direction == "forensics":
         forensics = importlib.import_module("forensics.agent")

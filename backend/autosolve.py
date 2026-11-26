@@ -10,7 +10,7 @@ anything else yields None so the caller can skip it.
 import tempfile
 import time
 
-from .platform import PlatformClient, PlatformError
+from backend.platform import PlatformClient, PlatformError
 
 # platform category string -> our custom direction (build_task supports these).
 SUPPORTED = {"WEB": "web", "CRYPTO": "crypto", "MISC": "misc", "FORENSICS": "forensics"}

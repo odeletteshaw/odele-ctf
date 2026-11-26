@@ -52,6 +52,49 @@ def _wrap_no_network(command: list[str]) -> list[str]:
     return command
 
 
+# Include common homebrew paths so sandboxed code can subprocess tools like php/objdump.
+_SANDBOX_ENV = {
+    "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    "LC_ALL": "C.UTF-8",
+    "LANG": "C.UTF-8",
+}
+
+
+def _sandbox_env(workdir: Path) -> dict[str, str]:
+    return {**_SANDBOX_ENV, "HOME": str(workdir), "TMPDIR": str(workdir)}
+
+
+def _format_output(proc: subprocess.CompletedProcess[str]) -> str:
+    out = proc.stdout
+    if proc.stderr:
+        out += ("\n" if out else "") + "[stderr]\n" + proc.stderr
+    if len(out) > MAX_OUTPUT_CHARS:
+        out = out[:MAX_OUTPUT_CHARS] + f"\n[truncated, {len(out)} chars]"
+    return f"[exit {proc.returncode}]\n{out}" if out.strip() else f"[exit {proc.returncode}, no output]"
+
+
+def _execute(command: list[str], workdir: Path, timeout: int,
+             stdin: str | None = None) -> str:
+    """Run one sandboxed command and render its result as text. With `stdin=None` the
+    child inherits our stdin (matching a bare `subprocess.run`)."""
+    try:
+        proc = subprocess.run(
+            command,
+            cwd=workdir,
+            env=_sandbox_env(workdir),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            preexec_fn=_set_limits,
+            **({} if stdin is None else {"input": stdin}),
+        )
+    except subprocess.TimeoutExpired:
+        return f"[timed out after {timeout}s]"
+    except Exception as error:  # sandbox wrapper missing/unusable, etc.
+        return f"[could not run: {error}]"
+    return _format_output(proc)
+
+
 def run_python(code: str, timeout: int = DEFAULT_TIMEOUT, workdir: Path | None = None) -> str:
     """Run `code` in the sandbox. By default each call gets a fresh ephemeral temp dir;
     pass a `workdir` to run inside a persistent directory instead, so the code can read
@@ -61,40 +104,12 @@ def run_python(code: str, timeout: int = DEFAULT_TIMEOUT, workdir: Path | None =
         workdir = Path(tempfile.mkdtemp(prefix="ctf-sbx-"))
     script = workdir / f"snippet_{uuid4().hex[:8]}.py"
     script.write_text(code)
-    command = _wrap_no_network([sys.executable, "-I", str(script)])
-    env = {
-        # Include common homebrew paths so agent code can subprocess tools like php/objdump.
-        "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-        "HOME": str(workdir),
-        "TMPDIR": str(workdir),
-        "LC_ALL": "C.UTF-8",
-        "LANG": "C.UTF-8",
-    }
     try:
-        proc = subprocess.run(
-            command,
-            cwd=workdir,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            preexec_fn=_set_limits,
-        )
-    except subprocess.TimeoutExpired:
-        return f"[timed out after {timeout}s]"
-    except Exception as error:  # sandbox wrapper missing/unusable, etc.
-        return f"[could not run: {error}]"
+        return _execute(_wrap_no_network([sys.executable, "-I", str(script)]), workdir, timeout)
     finally:
         script.unlink(missing_ok=True)
         if fresh:
             shutil.rmtree(workdir, ignore_errors=True)
-
-    out = proc.stdout
-    if proc.stderr:
-        out += ("\n" if out else "") + "[stderr]\n" + proc.stderr
-    if len(out) > MAX_OUTPUT_CHARS:
-        out = out[:MAX_OUTPUT_CHARS] + f"\n[truncated, {len(out)} chars]"
-    return f"[exit {proc.returncode}]\n{out}" if out.strip() else f"[exit {proc.returncode}, no output]"
 
 
 def run_command(argv: list[str], stdin: str = "", timeout: int = DEFAULT_TIMEOUT) -> str:
@@ -103,35 +118,9 @@ def run_command(argv: list[str], stdin: str = "", timeout: int = DEFAULT_TIMEOUT
     temp cwd/HOME. `stdin` is fed to the process; stdout/stderr/exit code come back as text.
     Used by the reverse category to run a crackme binary."""
     workdir = Path(tempfile.mkdtemp(prefix="ctf-sbx-"))
-    command = _wrap_no_network([str(a) for a in argv])
-    env = {
-        "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-        "HOME": str(workdir),
-        "TMPDIR": str(workdir),
-        "LC_ALL": "C.UTF-8",
-        "LANG": "C.UTF-8",
-    }
     try:
-        proc = subprocess.run(
-            command,
-            cwd=workdir,
-            env=env,
-            input=stdin,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            preexec_fn=_set_limits,
+        return _execute(
+            _wrap_no_network([str(a) for a in argv]), workdir, timeout, stdin=stdin
         )
-    except subprocess.TimeoutExpired:
-        return f"[timed out after {timeout}s]"
-    except Exception as error:  # sandbox wrapper missing/unusable, etc.
-        return f"[could not run: {error}]"
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
-
-    out = proc.stdout
-    if proc.stderr:
-        out += ("\n" if out else "") + "[stderr]\n" + proc.stderr
-    if len(out) > MAX_OUTPUT_CHARS:
-        out = out[:MAX_OUTPUT_CHARS] + f"\n[truncated, {len(out)} chars]"
-    return f"[exit {proc.returncode}]\n{out}" if out.strip() else f"[exit {proc.returncode}, no output]"

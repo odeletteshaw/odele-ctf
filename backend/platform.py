@@ -14,7 +14,7 @@ import os
 
 import httpx
 
-from . import config  # noqa: F401  (loads .env into os.environ)
+from core import config  # noqa: F401  (loads .env into os.environ)
 
 DEFAULT_BASE = "https://ctf2.dasctf.com"
 

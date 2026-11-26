@@ -3,7 +3,7 @@ import {
   Box, Button, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
   FormControlLabel, Checkbox, TextField, MenuItem, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Paper, Typography,
-  Stack, IconButton, Tooltip, Tabs, Tab, Divider,
+  Stack, IconButton, Tooltip, Tabs, Tab,
 } from '@mui/material'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import StopIcon from '@mui/icons-material/Stop'
@@ -54,7 +54,8 @@ export default function CtfPage() {
   useEffect(() => {
     let ws
     function connect() {
-      ws = new WebSocket(`ws://${location.host}/ws`)
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws'
+      ws = new WebSocket(`${proto}://${location.host}/ws`)
       ws.onmessage = (e) => { if (JSON.parse(e.data).type === 'changed') refresh() }
       ws.onclose = () => setTimeout(connect, 2000)
     }

@@ -58,6 +58,26 @@ CREATE INDEX IF NOT EXISTS idx_memories_category ON memories(category);
 """
 
 
+def fresh_state() -> dict[str, Any]:
+    """Default per-session state: the status panel values the UI renders."""
+    return {
+        "status": "idle",
+        "replies": 0,
+        "tool_calls": 0,
+        "thinking": "",
+        "flag": None,
+        "paths": [],
+        "tools_used": {},
+        "writeup": "",
+        "done": False,
+    }
+
+
+def _memory_row(row: tuple) -> dict[str, Any]:
+    return {"id": row[0], "category": row[1], "title": row[2], "content": row[3],
+            "source": row[4], "created_at": row[5]}
+
+
 class Session:
     _ids = itertools.count(1)
 
@@ -75,17 +95,7 @@ class Session:
         self.created_at: float | None = time.time()
         self.transcript: list[dict[str, Any]] = []
         self._loaded = True  # transcript is fully in memory (False for restored sessions)
-        self.state: dict[str, Any] = {
-            "status": "idle",
-            "replies": 0,
-            "tool_calls": 0,
-            "thinking": "",
-            "flag": None,
-            "paths": [],
-            "tools_used": {},
-            "writeup": "",
-            "done": False,
-        }
+        self.state: dict[str, Any] = fresh_state()
         if inherit is not None:
             # A continued session carries the previous attempt's findings forward so the
             # Findings panel isn't blank and the model builds on them instead of redoing them.
@@ -125,18 +135,12 @@ class Session:
         self.started_at = None
         self.transcript = []
         self._loaded = True
-        self.state = {
-            "status": "idle", "replies": 0, "tool_calls": 0, "thinking": "",
-            "flag": None, "paths": [], "tools_used": {}, "writeup": "", "done": False,
-        }
+        self.state = fresh_state()
 
     def send_guidance(self, text: str) -> None:
         text = text.strip()
         if text:
             self._guidance.put(text)
-
-    def elapsed(self) -> float:
-        return 0.0 if self.started_at is None else time.time() - self.started_at
 
     def is_running(self) -> bool:
         return self.state["status"] == "running" and not self.state["done"]
@@ -192,7 +196,6 @@ class Session:
         s.id, s.category, s.title, s.folder, _status, _flag, spec, state, created_at = row
         s.spec = json.loads(spec) if spec else {}
         s.title = s.title or "session"
-        s.folder = s.folder
         s.events = None
         s._guidance = None
         s._proc = None
@@ -200,16 +203,14 @@ class Session:
         s.created_at = created_at
         s.transcript = []
         s._loaded = False  # transcript loads lazily on selection
-        s.state = json.loads(state) if state else {}
-        s.state.setdefault("status", "idle")
-        s.state.setdefault("done", True)
-        s.state.setdefault("replies", 0)
-        s.state.setdefault("tool_calls", 0)
-        s.state.setdefault("thinking", "")
-        s.state.setdefault("flag", None)
-        s.state.setdefault("paths", [])
-        s.state.setdefault("tools_used", {})
-        s.state.setdefault("writeup", "")
+        # Restored sessions are never running; merge the stored state over the defaults
+        # so rows persisted before a state key existed still render. A status saved
+        # mid-run (running/preparing) has no subprocess behind it after a restart.
+        restored = json.loads(state) if state else {}
+        s.state = {**fresh_state(), "done": True, **restored}
+        if s.state.get("status") in ("running", "preparing"):
+            s.state["status"] = "cancelled"
+            s.state["done"] = True
         return s
 
 
@@ -401,8 +402,7 @@ class Manager:
             "SELECT id, category, title, content, source, created_at "
             "FROM memories ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()
-        return [{"id": r[0], "category": r[1], "title": r[2], "content": r[3],
-                 "source": r[4], "created_at": r[5]} for r in rows]
+        return [_memory_row(r) for r in rows]
 
     def search_memories(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
         q = query.lower().strip()
@@ -413,8 +413,7 @@ class Manager:
             "FROM memories WHERE lower(title || ' ' || content) LIKE ? "
             "ORDER BY id DESC LIMIT ?", (f"%{q}%", limit)
         ).fetchall()
-        return [{"id": r[0], "category": r[1], "title": r[2], "content": r[3],
-                 "source": r[4], "created_at": r[5]} for r in rows]
+        return [_memory_row(r) for r in rows]
 
     def drain_all(self) -> None:
         for session in self.sessions:

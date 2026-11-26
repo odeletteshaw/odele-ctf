@@ -1,34 +1,44 @@
 """FastAPI server for the Odele CTF console (frontend/backend split).
 
-Exposes the session list + autosolve actions as REST, pushes "changed" over
-WebSocket, and serves the static web frontend. The heavy logic lives in
-server/controller.py (which wraps backend.manager.Manager); this file is a thin HTTP
-layer.
+Exposes the session list + autosolve actions as REST and pushes "changed" over
+WebSocket. The heavy logic lives in backend.controller (autosolve/retry) and
+backend.manager (sessions); this file is a thin HTTP layer.
 
-Run:  python -m server.app        (or: uvicorn server.app:app --reload)
+Run:  python -m backend.app        (or: uvicorn backend.app:app --reload)
 """
 
 import asyncio
 import threading
 import time
+from contextlib import asynccontextmanager
 from datetime import datetime
-from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from backend.manager import Manager, Session
 from backend.controller import Controller
-
-ROOT = Path(__file__).resolve().parent.parent
-STATIC = Path(__file__).resolve().parent / "static"
+from backend.manager import Manager, Session
+from backend.team import load_team, save_team
 
 manager = Manager()
 controller = Controller(manager)
 
-app = FastAPI(title="Odele")
+
+# ---- background loop: advance the autosolve controller ---------------------
+def _run_loop() -> None:
+    while True:
+        controller.step()
+        time.sleep(0.5)
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    threading.Thread(target=_run_loop, daemon=True).start()
+    yield
+
+
+app = FastAPI(title="Odele", lifespan=_lifespan)
 
 
 def _fmt_time(ts: float | None) -> str | None:
@@ -63,18 +73,6 @@ def session_detail_to_dict(s: Session) -> dict:
         "transcript": s.transcript,
     })
     return d
-
-
-# ---- background loop: advance the autosolve controller ---------------------
-def _run_loop() -> None:
-    while True:
-        controller.step()
-        time.sleep(0.5)
-
-
-@app.on_event("startup")
-def _startup() -> None:
-    threading.Thread(target=_run_loop, daemon=True).start()
 
 
 # ---- REST ------------------------------------------------------------------
@@ -178,13 +176,11 @@ def autosolve_slots():
 
 @app.get("/api/team")
 def get_team():
-    from core.team import load_team
     return {"members": load_team()}
 
 
 @app.post("/api/team")
 def set_team(body: dict):
-    from core.team import save_team
     members = body.get("members")
     if not isinstance(members, list):
         return JSONResponse({"error": "members must be a list"}, status_code=400)
@@ -205,10 +201,6 @@ async def ws(websocket: WebSocket):
             await asyncio.sleep(0.5)
     except WebSocketDisconnect:
         pass
-
-
-# ---- static frontend -------------------------------------------------------
-app.mount("/", StaticFiles(directory=str(STATIC), html=True), name="static")
 
 
 if __name__ == "__main__":

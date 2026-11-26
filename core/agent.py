@@ -33,6 +33,15 @@ def _is_placeholder_flag(flag: str) -> bool:
     return not re.search(r"[A-Za-z0-9]", inner)
 
 
+def extract_flags(text: str, pattern: "re.Pattern[str] | None" = None) -> list[str]:
+    """All non-placeholder flags in `text`: the given pattern (or FLAG_PATTERN) first,
+    falling back to GENERAL_FLAG_PATTERN for targets with a different keyword prefix."""
+    found = [f for f in (pattern or FLAG_PATTERN).findall(text) if not _is_placeholder_flag(f)]
+    if not found:
+        found = [f for f in GENERAL_FLAG_PATTERN.findall(text) if not _is_placeholder_flag(f)]
+    return found
+
+
 @dataclass
 class Tool:
     """One capability the model may call. The handler takes parsed JSON args and
@@ -117,12 +126,8 @@ def run_loop(
             emit({"type": "agent", "text": message.content})
         if not message.tool_calls:
             messages.append(assistant)
-            pattern = flag_pattern or FLAG_PATTERN
             text = message.content or ""
-            found = [f for f in pattern.findall(text) if not _is_placeholder_flag(f)]
-            if not found:
-                found = [f for f in GENERAL_FLAG_PATTERN.findall(text) if not _is_placeholder_flag(f)]
-            has_flag = bool(text.strip()) and bool(found)
+            has_flag = bool(text.strip()) and bool(extract_flags(text, flag_pattern))
             # A text conclusion ends the loop when it has the flag, or when persistence is
             # off (so the model may legitimately answer "couldn't solve"). In persist mode,
             # text without a flag is treated as a premature stop and nudged to continue.
@@ -226,9 +231,7 @@ def solve(
         on_event=on_event, guidance=guidance, flag_pattern=flag_pattern, persist=persist,
         diagnostic=diagnostic,
     )
-    flags = [f for f in (flag_pattern or FLAG_PATTERN).findall(final_text) if not _is_placeholder_flag(f)]
-    if not flags:
-        flags = [f for f in GENERAL_FLAG_PATTERN.findall(final_text) if not _is_placeholder_flag(f)]
+    flags = extract_flags(final_text, flag_pattern)
     return SolveResult(flags[-1] if flags else None, final_text, tool_calls)
 
 

@@ -54,12 +54,16 @@ def search_memories(query: str, limit: int = 5) -> list[dict]:
     q = query.lower().strip()
     if not q:
         return []
+    import sqlite3
+
     db = Path.home() / ".odele-ctf" / "sessions.db"
     if not db.exists():
         return []
-    import sqlite3
     try:
         conn = sqlite3.connect(str(db))
+    except Exception:
+        return []
+    try:
         rows = conn.execute(
             "SELECT category, title, content, source, created_at FROM memories "
             "WHERE lower(title || ' ' || content) LIKE ? ORDER BY id DESC LIMIT ?",
@@ -68,9 +72,6 @@ def search_memories(query: str, limit: int = 5) -> list[dict]:
     except Exception:
         return []
     finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+        conn.close()
     return [{"category": r[0], "title": r[1], "content": r[2],
              "source": r[3], "created_at": r[4]} for r in rows]

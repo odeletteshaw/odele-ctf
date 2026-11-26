@@ -62,11 +62,11 @@ cd frontend && npm install && npm run dev
 ## 目录结构
 
 ```
-backend/    后端编排（框架无关）：manager（持久化+session）、worker（解题子进程）、
-            builder（任务组装）、controller（autosolve / retry / 团队控制循环）
-server/     Web 后端：FastAPI（REST + WebSocket）+ static/（前端静态页）
+backend/    后端（全部）：FastAPI 服务 app.py + 编排 controller / manager / worker /
+            builder，以及 platform（CTF2 REST 客户端）、autosolve（平台题 → spec）、
+            team（RAFT 分工）
 core/       跨题型通用底座：config（模型配置）、agent（Tool + run_loop + solve）、
-            sandbox（run_python / run_command 沙箱）、evaluate（benchmark 循环）、offline、team
+            sandbox（run_python / run_command 沙箱）、evaluate（benchmark 循环）、offline
 tools/      agent 工具（「能力」），各题型从同一个菜单组装：
             sandbox.py python_tool · http.py http_tool · process.py process_tool
             chat.py message_tool · bin.py disassemble_tool / run_binary_tool

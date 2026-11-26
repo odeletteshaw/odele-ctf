@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Box, Paper, Typography, TextField, MenuItem, Button } from '@mui/material'
+import { Paper, Typography, TextField, MenuItem, Button } from '@mui/material'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import { manualSolve } from '../api.js'
 

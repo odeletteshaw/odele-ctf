@@ -14,6 +14,7 @@ Usage: python ai/evaluate.py [name ...]
 
 import argparse
 import importlib
+import secrets
 import sys
 from pathlib import Path
 
@@ -73,8 +74,6 @@ def main() -> None:
     parser.add_argument("challenge", help="challenge module name under ai/challenges/")
     parser.add_argument("--model", default=None)
     args = parser.parse_args()
-    import secrets
-
     module = importlib.import_module(f"ai.challenges.{args.challenge}")
     flag = f"flag{{{secrets.token_hex(12)}}}"
     defender = module.make(flag)

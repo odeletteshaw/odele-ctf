@@ -1,6 +1,6 @@
 """Backend orchestration: autosolve + session actions + retry, framework-agnostic.
 
-The Tkinter GUI and the FastAPI server both drive this single Controller, so the
+The FastAPI app (backend.app) drives this single Controller, so the
 agent logic lives in exactly one place. No UI imports here — user-facing confirmations
 are the caller's job; this class just does the work and notifies listeners on change.
 """
@@ -10,7 +10,11 @@ import threading
 import time
 from typing import Any, Callable
 
+import core.config as cfg
+from backend.autosolve import PLATFORM_CATEGORY, prepare_challenge
 from backend.manager import Manager, Session
+from backend.platform import PlatformClient, PlatformError, list_tokens
+from backend.team import direction_to_token_index, load_team
 
 FAILED_STATUSES = ("done", "failed", "error", "cancelled")
 
@@ -57,8 +61,6 @@ class Controller:
     # ---- actions ----------------------------------------------------------
     def start_autosolve(self, directions: list[str], maxn: int, diff: str | None) -> str | None:
         """Return an error string on failure, or None on success."""
-        from core.platform import list_tokens
-        from core.team import direction_to_token_index, load_team
         tokens = list_tokens()
         if not tokens:
             return "没有 token（.env 里配 CTF2_AGENT_TOKEN_0/1/2）"
@@ -124,8 +126,6 @@ class Controller:
         return session.id
 
     def config(self) -> dict:
-        import core.config as cfg
-        from core.platform import list_tokens
         key = "未设置"
         if cfg.API_KEY:
             key = f"sk-…{cfg.API_KEY[-4:]}"
@@ -189,8 +189,6 @@ class Controller:
                             f"{session.title}: 找不到平台题目信息（可能已解，或不在任何 token 的未解队列）"))
                         return
                     cid, gid = resolved
-                from core.autosolve import prepare_challenge
-                from core.platform import PlatformClient
                 client = PlatformClient()
                 try:
                     item = {"id": cid, "practice_ground_id": gid,
@@ -210,8 +208,6 @@ class Controller:
                 time.sleep(5 * (attempt + 1))
 
     def _resolve_platform_id(self, title: str, category: str) -> tuple[str, str] | None:
-        from core.autosolve import PLATFORM_CATEGORY
-        from core.platform import PlatformClient, list_tokens
         for tok in list_tokens():
             client = PlatformClient(token=tok)
             try:
@@ -266,7 +262,6 @@ class Controller:
 
     def _finalize_retry(self, meta: dict, flag: str | None) -> None:
         try:
-            from core.platform import PlatformClient, PlatformError
             client = PlatformClient()
             try:
                 if flag:
@@ -352,8 +347,6 @@ class Controller:
 
     def _autosolve_worker(self, slot: dict) -> None:
         try:
-            from core.autosolve import PLATFORM_CATEGORY, prepare_challenge
-            from core.platform import PlatformClient
             client = PlatformClient(token=slot["token"])
             try:
                 nc = client.next_challenges(
@@ -384,7 +377,6 @@ class Controller:
             slot["queue"].put(("error", str(e)))
 
     def _submit_slot(self, slot: dict) -> None:
-        from core.platform import PlatformClient, PlatformError
         session = slot["current"]
         meta = slot["current_meta"]
         slot["current"] = None

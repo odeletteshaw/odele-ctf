@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Box, Paper, Typography, Button, Table, TableBody, TableCell, TableRow } from '@mui/material'
+import { Paper, Typography, Button, Table, TableBody, TableCell, TableRow } from '@mui/material'
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
 import { getConfig, clearFailed } from '../api.js'
 

@@ -4,9 +4,9 @@
 set -e
 cd "$(dirname "$0")"
 
-pkill -f "python.*-m server.app" 2>/dev/null || true
+pkill -f "python.*-m backend.app" 2>/dev/null || true
 sleep 1
 
-nohup .venv/bin/python -m server.app >/tmp/odele-server.log 2>&1 &
+nohup .venv/bin/python -m backend.app >/tmp/odele-server.log 2>&1 &
 echo "Web 控制台已启动：http://127.0.0.1:8765"
 echo "pid: $!    日志: /tmp/odele-server.log"

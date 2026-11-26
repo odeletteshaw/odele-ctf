@@ -15,6 +15,12 @@ core/        跨题型通用的底座
 tools/        agent 工具（「能力」），每个题型从这里组装
   sandbox.py python_tool() · http.py http_tool() · process.py process_tool()
   chat.py message_tool() · bin.py disassemble_tool()/run_binary_tool()
+backend/      Web 控制台后端：FastAPI app.py（REST + WebSocket）+ 编排
+  manager.py   session 生命周期 + SQLite 持久化
+  worker.py    解题子进程入口 · builder.py 从 spec 组装题型任务
+  controller.py autosolve / retry 控制循环
+  platform.py  CTF2 REST 客户端 · autosolve.py 平台题 → spec · team.py RAFT 分工
+frontend/     Web 控制台前端：React + Material-UI（Vite），src/pages/ 一页一文件
 web/           Web 题型：HTTP 靶题
   agent.py       prompt + 工具组装（http_request + run_python）；origin 锁定
   challenges/    一题一文件；_harness.py 是共享 HTTP server，_common.py 是出题 helper

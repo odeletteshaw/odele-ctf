@@ -1,8 +1,6 @@
 """RSA LSB oracle. The oracle reveals the low bit of m = c^d mod n for any queried ciphertext.
 Batch-query c * 2^(i*e) mod n to read the binary digits of m/n, then reconstruct the flag."""
 
-import secrets
-
 from Crypto.Util.number import getPrime
 
 DESCRIPTION = (
