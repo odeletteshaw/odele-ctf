@@ -58,16 +58,21 @@ class Controller:
     def start_autosolve(self, directions: list[str], maxn: int, diff: str | None) -> str | None:
         """Return an error string on failure, or None on success."""
         from core.platform import list_tokens
+        from core.team import direction_to_token_index, load_team
         tokens = list_tokens()
         if not tokens:
             return "没有 token（.env 里配 CTF2_AGENT_TOKEN_0/1/2）"
+        by_dir = direction_to_token_index(load_team())
         self._auto_slots = []
         persisted_failed = self.manager.failed_ids()
-        # single-line: one slot per direction, always on the first token.
+        # team: each direction goes to the agent that specializes in it.
         for direction in directions:
+            ti = by_dir.get(direction, 0)
+            if ti >= len(tokens):
+                ti = 0  # fall back to the first token if the configured one is missing
             self._auto_slots.append({
-                "running": True, "direction": direction, "token": tokens[0],
-                "tokens": tokens, "token_index": 0,
+                "running": True, "direction": direction, "token": tokens[ti],
+                "tokens": tokens, "token_index": ti,
                 "max": maxn, "difficulty": diff, "done": 0,
                 "failed": set(persisted_failed),
                 "current": None, "current_meta": None, "phase": "idle", "queue": queue.Queue(),

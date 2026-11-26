@@ -176,6 +176,22 @@ def autosolve_slots():
     return controller.autosolve_slots()
 
 
+@app.get("/api/team")
+def get_team():
+    from core.team import load_team
+    return {"members": load_team()}
+
+
+@app.post("/api/team")
+def set_team(body: dict):
+    from core.team import save_team
+    members = body.get("members")
+    if not isinstance(members, list):
+        return JSONResponse({"error": "members must be a list"}, status_code=400)
+    save_team(members)
+    return {"ok": True}
+
+
 # ---- WebSocket ------------------------------------------------------------
 @app.websocket("/ws")
 async def ws(websocket: WebSocket):

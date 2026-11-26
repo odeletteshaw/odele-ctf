@@ -71,6 +71,7 @@
       <a href="#" class="active" id="navCtf" onclick="showView('ctf');return false">CTF 打题</a>
       <a href="#" id="navMem" onclick="showView('mem');return false">通话池</a>
       <a href="#" id="navManual" onclick="showView('manual');return false">手动解题</a>
+      <a href="#" id="navTeam" onclick="showView('team');return false">团队</a>
       <a href="#" id="navConfig" onclick="showView('config');return false">配置管理</a>
     </nav>
   </aside>
@@ -129,6 +130,15 @@
         <pre id="configBody"></pre>
         <button id="clearFailed" class="danger">清空失败黑名单</button>
         <p class="muted">配置通过 .env 修改，重启服务生效。</p>
+      </div>
+    </section>
+    <section id="teamView" style="display:none">
+      <div style="background:var(--panel);border-radius:10px;padding:20px 24px;max-width:760px">
+        <h2>团队（方向 → Agent 分工）</h2>
+        <div id="teamList"></div>
+        <h3 style="margin-top:20px">编辑（JSON）</h3>
+        <textarea id="teamJson" rows="8" style="width:100%;background:var(--card);color:var(--fg);border:1px solid var(--accent);border-radius:6px;padding:10px;font:12px Menlo,monospace"></textarea>
+        <button id="teamSave" style="margin-top:8px">保存团队</button>
       </div>
     </section>
   </main>

@@ -160,12 +160,15 @@ function showView(name) {
   $("memView").style.display = name === "mem" ? "block" : "none";
   $("manualView").style.display = name === "manual" ? "block" : "none";
   $("configView").style.display = name === "config" ? "block" : "none";
+  $("teamView").style.display = name === "team" ? "block" : "none";
   $("navCtf").classList.toggle("active", name === "ctf");
   $("navMem").classList.toggle("active", name === "mem");
   $("navManual").classList.toggle("active", name === "manual");
   $("navConfig").classList.toggle("active", name === "config");
+  $("navTeam").classList.toggle("active", name === "team");
   if (name === "mem") loadMemories("");
   if (name === "config") loadConfig();
+  if (name === "team") loadTeam();
 }
 
 async function loadMemories(q) {
@@ -226,3 +229,28 @@ async function clearFailed() {
 
 $("manStart").addEventListener("click", startManual);
 $("clearFailed").addEventListener("click", clearFailed);
+
+// ---- team ----------------------------------------------------------------
+async function loadTeam() {
+  const t = await api("/api/team");
+  const members = t.members || [];
+  $("teamList").innerHTML = members.map((m) => `
+    <div style="display:flex;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid #1f2735">
+      <strong>${m.name || ""}</strong>
+      <span class="muted">token ${m.token_index}</span>
+      <span>${(m.directions || []).join(", ") || "—"}</span>
+    </div>`).join("");
+  $("teamJson").value = JSON.stringify(t, null, 2);
+}
+async function saveTeam() {
+  try {
+    const members = JSON.parse($("teamJson").value).members;
+    if (!Array.isArray(members)) throw new Error("members 必须是数组");
+    await api("/api/team", { method: "POST", body: JSON.stringify({ members }) });
+    loadTeam();
+    alert("团队已保存");
+  } catch (e) {
+    alert("JSON 解析失败: " + e.message);
+  }
+}
+$("teamSave").addEventListener("click", saveTeam);
