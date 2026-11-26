@@ -223,6 +223,11 @@ def run_loop(
                     "Re-send ONE minimal valid JSON object — do not wrap JSON inside a string. "
                     f"Received (truncated): {preview}"
                 )
+            elif found_in_output is not None:
+                # A previous call in this same turn already produced the flag. Still answer
+                # the protocol (one tool message per call id) but don't execute the rest.
+                output = ("Skipped: an earlier tool call in this turn already returned the "
+                          "flag. Report it in your final message now instead of probing further.")
             else:
                 invalid_streak = 0
                 print(f"[{call.function.name}] {args}", flush=True)
