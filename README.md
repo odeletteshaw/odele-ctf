@@ -46,11 +46,15 @@ python crypto/test_offline.py
 python reverse/test_offline.py
 ```
 
-Web 控制台（前后端分离：FastAPI + Web 前端）：
+Web 控制台（前后端分离）：
 
 ```bash
-./restart_server.sh                 # 启动服务
-# 浏览器打开 http://127.0.0.1:8765
+# 1. 后端（FastAPI，REST + WebSocket，端口 8765）
+./restart_server.sh
+
+# 2. 前端（React + Material-UI，Vite dev server，端口 5173）
+cd frontend && npm install && npm run dev
+# 浏览器打开 http://localhost:5173（dev server 自动把 /api 代理到 8765）
 ```
 
 切换模型/厂商：环境变量 `CTF_API_BASE` / `CTF_MODEL` / `CTF_API_KEY`（真实环境变量优先于 `.env`）。
