@@ -21,8 +21,6 @@ class Controller:
         self._auto_slots: list[dict[str, Any]] = []
         self._retry_queue: queue.Queue = queue.Queue()
         self._retry_submits: dict[int, dict] = {}
-        self._claimed: set[str] = set()
-        self._claimed_lock = threading.Lock()
         self._version = 0
         self._listeners: list[Callable[[], None]] = []
 
@@ -64,18 +62,16 @@ class Controller:
         if not tokens:
             return "没有 token（.env 里配 CTF2_AGENT_TOKEN_0/1/2）"
         self._auto_slots = []
-        self._claimed = set()  # reset the claim set on a fresh run
         persisted_failed = self.manager.failed_ids()
-        # one slot per (direction × token), so N tokens solve N challenges in parallel.
+        # single-line: one slot per direction, always on the first token.
         for direction in directions:
-            for j, token in enumerate(tokens):
-                self._auto_slots.append({
-                    "running": True, "direction": direction, "token": token,
-                    "tokens": tokens, "token_index": j,
-                    "max": maxn, "difficulty": diff, "done": 0,
-                    "failed": set(persisted_failed),
-                    "current": None, "current_meta": None, "phase": "idle", "queue": queue.Queue(),
-                })
+            self._auto_slots.append({
+                "running": True, "direction": direction, "token": tokens[0],
+                "tokens": tokens, "token_index": 0,
+                "max": maxn, "difficulty": diff, "done": 0,
+                "failed": set(persisted_failed),
+                "current": None, "current_meta": None, "phase": "idle", "queue": queue.Queue(),
+            })
         self._bump()
         return None
 
@@ -326,15 +322,10 @@ class Controller:
                 slot["phase"] = "solving"
             else:
                 skip = kind == "error" and isinstance(result, tuple) and len(result) >= 3
-                exhausted = False
-                rotated = False
                 if skip:
                     item, msg = result[1], result[2]
                     slot.setdefault("failed", set()).add(str(item.get("id")))
                     self.manager.add_failed(str(item.get("id")), slot["direction"])
-                    exhausted = "environment_limit" in msg or "agent_disabled" in msg
-                    if exhausted:
-                        rotated = self._rotate_token(slot, msg)
                 else:
                     msg = result[1] if isinstance(result, tuple) else "打题结束"
                 pending = slot.get("pending")
@@ -344,8 +335,8 @@ class Controller:
                     pending.transcript.append({"type": "status", "status": "error", "error": msg})
                     slot["pending"] = None
                     self.manager.save()
-                if skip and (not exhausted or rotated):
-                    print(f"[autosolve:{slot['direction']}] {'rotate' if rotated else 'skip'}: {msg}")
+                if skip:
+                    print(f"[autosolve:{slot['direction']}] skip: {msg}")
                     slot["phase"] = "idle"
                 else:
                     self._stop_slot(slot, msg)
@@ -353,16 +344,6 @@ class Controller:
             session = slot["current"]
             if session is not None and session.state["done"]:
                 self._submit_slot(slot)
-
-    def _rotate_token(self, slot: dict, msg: str) -> bool:
-        tokens = slot.get("tokens") or [slot.get("token")]
-        idx = slot.get("token_index", 0) + 1
-        if idx < len(tokens):
-            slot["token_index"] = idx
-            slot["token"] = tokens[idx]
-            print(f"[autosolve:{slot['direction']}] {msg} → 切换到 token {idx}")
-            return True
-        return False
 
     def _autosolve_worker(self, slot: dict) -> None:
         try:
@@ -376,15 +357,9 @@ class Controller:
                 )
                 items = nc.get("items") or []
                 failed = slot.get("failed") or set()
-                item = None
-                with self._claimed_lock:
-                    for it in items:
-                        cid = str(it.get("id"))
-                        if (str(it.get("category", "")).lower() == slot["direction"]
-                                and cid not in failed and cid not in self._claimed):
-                            self._claimed.add(cid)
-                            item = it
-                            break
+                item = next((it for it in items
+                             if str(it.get("category", "")).lower() == slot["direction"]
+                             and str(it.get("id")) not in failed), None)
                 if item is None:
                     slot["queue"].put(("stop", f"{slot['direction']} 没有未解的题了"))
                     return
