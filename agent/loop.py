@@ -7,6 +7,7 @@ to web, crypto, pwn, etc.
 
 import json
 import re
+import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -101,8 +102,10 @@ def run_loop(
     diagnostic: str | None = None,
 ) -> tuple[str, int]:
     def emit(event: dict[str, Any]) -> None:
+        # Timestamp every event: transcripts can then tell "the model thought for 20
+        # minutes" apart from "the tool was slow" without trusting HTTP Date headers.
         if on_event:
-            on_event(event)
+            on_event({**event, "ts": time.time()})
 
     handlers = {tool.name: tool.handler for tool in tools}
     repeat_key_fns = {tool.name: tool.repeat_key for tool in tools}
@@ -240,10 +243,14 @@ def run_loop(
 
 def _openai_chat_fn(client: OpenAI, model: str) -> ChatFn:
     def chat(messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> Any:
+        started = time.time()
         response = client.chat.completions.create(
             model=model, messages=messages, tools=tools, tool_choice="auto", temperature=0,
             timeout=config.API_TIMEOUT,
         )
+        elapsed = time.time() - started
+        if elapsed > 30:
+            print(f"[slow] model call took {elapsed:.0f}s", flush=True)
         return response.choices[0].message
 
     return chat
@@ -263,7 +270,8 @@ def solve(
 ) -> SolveResult:
     if not config.API_KEY:
         raise RuntimeError("No API key. Set DEEPSEEK_API_KEY (or CTF_API_KEY), e.g. in .env")
-    client = OpenAI(base_url=config.API_BASE, api_key=config.API_KEY)
+    client = OpenAI(base_url=config.API_BASE, api_key=config.API_KEY,
+                    max_retries=config.API_RETRIES)
     chat = _openai_chat_fn(client, model or config.DEFAULT_MODEL)
     final_text, tool_calls = run_loop(
         chat, tools, system_prompt, user_prompt, max_turns,
@@ -286,7 +294,8 @@ def generate_writeup(
     """
     if not config.API_KEY:
         return ""
-    client = OpenAI(base_url=config.API_BASE, api_key=config.API_KEY)
+    client = OpenAI(base_url=config.API_BASE, api_key=config.API_KEY,
+                    max_retries=config.API_RETRIES)
     lines: list[str] = []
     for ev in events[-60:]:  # keep the recent tail so the prompt stays bounded
         kind = ev.get("type")

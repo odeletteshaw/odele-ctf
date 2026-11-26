@@ -13,6 +13,7 @@ PASS/FAIL verdict.
 import json
 import os
 import secrets
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -41,6 +42,7 @@ def benchmark(
     solved = 0
     for name in selected:
         flag = f"flag{{{secrets.token_hex(12)}}}"
+        started = time.time()
         target = make(challenges[name], flag)
         events: list[dict[str, Any]] = []
         try:
@@ -48,12 +50,15 @@ def benchmark(
         finally:
             if cleanup:
                 cleanup(target)
+        elapsed = time.time() - started
         passed = result.flag == flag
         solved += passed
-        print(f"{'PASS' if passed else 'FAIL'} {name} ({result.tool_calls} tool calls)\n")
+        print(f"{'PASS' if passed else 'FAIL'} {name} "
+              f"({result.tool_calls} tool calls, {elapsed:.1f}s)\n")
         if out_dir is not None:
             meta = {"type": "meta", "name": name, "passed": passed, "flag": result.flag,
-                    "tool_calls": result.tool_calls, "final_text": result.final_text}
+                    "tool_calls": result.tool_calls, "elapsed_s": round(elapsed, 2),
+                    "final_text": result.final_text}
             path = out_dir / f"{name}.jsonl"
             with path.open("w", encoding="utf-8") as fh:
                 for event in [*events, meta]:

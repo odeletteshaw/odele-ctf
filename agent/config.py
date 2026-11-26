@@ -32,4 +32,7 @@ API_BASE = os.environ.get("CTF_API_BASE", "https://api.deepseek.com")
 API_KEY = os.environ.get("CTF_API_KEY") or os.environ.get("DEEPSEEK_API_KEY")
 DEFAULT_MODEL = os.environ.get("CTF_MODEL", "deepseek-chat")
 # Per-request timeout (seconds) so a hung API call errors out instead of freezing a session.
-API_TIMEOUT = float(os.environ.get("CTF_API_TIMEOUT", "300"))
+# The client also retries a timed-out request; timeout × (retries + 1) bounds one bad turn
+# (120s × 2 ≈ 4 min, vs the ~20 min a 300s × 3 attempt default could stall a benchmark).
+API_TIMEOUT = float(os.environ.get("CTF_API_TIMEOUT", "120"))
+API_RETRIES = int(os.environ.get("CTF_API_RETRIES", "1"))
