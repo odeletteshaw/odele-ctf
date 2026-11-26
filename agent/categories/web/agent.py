@@ -98,8 +98,9 @@ Common vulnerability classes to consider:
   (<!DOCTYPE d [<!ENTITY e SYSTEM "file:///flag.txt">]>) and reference &e; to read files.
 - Template injection (SSTI): if reflected input is evaluated, {{7*7}} rendering as 49
   confirms it; then read exposed variables/config objects to reach a secret.
-- Auth bypass: decode cookies/tokens (base64, JWT header.payload.signature); if they
-  are unsigned or accept alg=none, forge a privileged role and replay the request.
+- Auth bypass: decode cookies/tokens (base64 or base64url — pad with `=` to a multiple of
+  4 before decoding; JWT header.payload.signature); if they are unsigned or accept alg=none,
+  forge a privileged role and replay the request.
 - Block-cipher modes: AES-ECB encrypts each 16-byte block independently, so blocks are
   interchangeable. For CBC, plaintext block N is XORed with ciphertext block N-1 (the IV
   only feeds block 1): work out WHICH plaintext block holds the target field before

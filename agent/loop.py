@@ -116,6 +116,7 @@ def run_loop(
     repeat_counts: dict[tuple[str, str], int] = {}
     nudged_repeats: set[tuple[str, str]] = set()
     agent_text_counts: dict[str, int] = {}
+    flag_hint_sent = False
     for _ in range(max_turns):
         # Fold in any supervisor guidance before the model's next turn.
         if guidance and (note := guidance()):
@@ -166,6 +167,7 @@ def run_loop(
         ]
         messages.append(assistant)
         seen_this_turn: list[tuple[str, str]] = []
+        found_in_output: str | None = None
         for call in message.tool_calls:
             tool_calls += 1
             raw_args = call.function.arguments or ""
@@ -196,6 +198,24 @@ def run_loop(
                 output = handler(args) if handler else f"Error: unknown tool {call.function.name}"
             emit({"type": "tool_result", "name": call.function.name, "output": output})
             messages.append({"role": "tool", "tool_call_id": call.id, "content": output})
+            if found_in_output is None and not flag_hint_sent:
+                matches = extract_flags(str(output), flag_pattern)
+                if matches:
+                    found_in_output = matches[-1]
+        # The flag may already be sitting in a tool result while the model keeps probing.
+        # Tell it to report that value now; solve() only extracts the flag from the final
+        # assistant message, so this nudge (not an early stop) is what converts it to PASS.
+        if found_in_output is not None:
+            flag_hint_sent = True
+            messages.append({
+                "role": "user",
+                "content": (
+                    f"A tool output already contains the flag {found_in_output}. Stop calling "
+                    "tools and report it in your final message now."
+                ),
+            })
+            print("[nudge] flag already found — report it", flush=True)
+            emit({"type": "guidance", "text": "(auto) flag already found — report it"})
         # Break tool-call loops: if the model repeats an exact call it already made, inject a
         # supervisor note telling it to review its earlier findings and change tack instead of
         # burning the turn budget on the same doomed attempt.

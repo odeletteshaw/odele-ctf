@@ -5,9 +5,15 @@ system prompt, so the prompt stays small regardless of how many cards exist.
 `search_techniques(category, query)` returns the full text of matching cards for
 on-demand retrieval via the search_knowledge tool."""
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+
+
+def _query_tokens(query: str) -> list[str]:
+    """Split a query into lowercase word tokens (CJK runs stay whole)."""
+    return [t for t in re.split(r"[^\w]+", query.lower()) if len(t) >= 2]
 
 
 def _cards(category: str) -> list[str]:
@@ -42,11 +48,20 @@ def load_techniques(category: str) -> str:
 
 
 def search_techniques(category: str, query: str) -> list[str]:
-    """Return the full text of cards whose content matches the query (case-insensitive)."""
+    """Full text of matching cards. An exact phrase match wins; otherwise match cards that
+    contain EVERY query token — so 'LDAP injection authentication bypass' finds a card that
+    says 'LDAP injection' and 'authentication bypass' (whole-phrase search missed it)."""
     q = query.lower().strip()
     if not q:
         return []
-    return [text for text in _cards(category) if q in text.lower()]
+    cards = _cards(category)
+    exact = [text for text in cards if q in text.lower()]
+    if exact:
+        return exact
+    tokens = _query_tokens(query)
+    if not tokens:
+        return []
+    return [text for text in cards if all(t in text.lower() for t in tokens)]
 
 
 def search_memories(query: str, limit: int = 5) -> list[dict]:
@@ -63,11 +78,13 @@ def search_memories(query: str, limit: int = 5) -> list[dict]:
         conn = sqlite3.connect(str(db))
     except Exception:
         return []
+    tokens = _query_tokens(query) or [q]
+    where = " AND ".join("lower(title || ' ' || content) LIKE ?" for _ in tokens)
+    params = [f"%{t}%" for t in tokens] + [limit]
     try:
         rows = conn.execute(
             "SELECT category, title, content, source, created_at FROM memories "
-            "WHERE lower(title || ' ' || content) LIKE ? ORDER BY id DESC LIMIT ?",
-            (f"%{q}%", limit),
+            f"WHERE {where} ORDER BY id DESC LIMIT ?", params,
         ).fetchall()
     except Exception:
         return []
