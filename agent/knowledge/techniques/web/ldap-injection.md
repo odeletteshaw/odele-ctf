@@ -2,10 +2,10 @@
 
 **一句话**：登录名/密码被直接拼进 `(&(uid=输入)(password=输入))` 过滤器时，用 `*` 通配符或
 `)(`、`|` 之类的结构注入让条件恒真，从而绕过认证（或盲读目录属性）。
-关键词：LDAP injection / authentication bypass / filter injection / wildcard。
 
 ## 触发信号
 
+关键词：LDAP injection / authentication bypass / filter injection / wildcard。
 - 登录/搜索接口返回「认证失败」或「Welcome」，而参数进入的是目录服务（portal、内网系统、企业登录页）。
 - 对 `*`、`)`、`(`、`&`、`|` 的响应不同（报错 / 恒真 / 恒假 / 回显差异）。
 - 错误信息里出现 `invalid DN`、`filter`、`ldap_`、`(&(` 等字样。
