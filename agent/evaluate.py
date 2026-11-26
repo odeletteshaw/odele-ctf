@@ -44,25 +44,36 @@ def benchmark(
         flag = f"flag{{{secrets.token_hex(12)}}}"
         started = time.time()
         target = make(challenges[name], flag)
-        events: list[dict[str, Any]] = []
+        path = out_dir / f"{name}.jsonl" if out_dir is not None else None
+        fh = path.open("w", encoding="utf-8") if path is not None else None
+
+        def sink(event: dict[str, Any], _fh=fh) -> None:
+            # Stream + flush so a long or stalled run is inspectable while it runs;
+            # previously the transcript only appeared once the challenge finished.
+            if _fh is not None:
+                _fh.write(json.dumps(event, ensure_ascii=False) + "\n")
+                _fh.flush()
+
         try:
-            result = solve(target, challenges[name].DESCRIPTION, on_event=events.append)
+            try:
+                result = solve(target, challenges[name].DESCRIPTION, on_event=sink)
+            finally:
+                if cleanup:
+                    cleanup(target)
+            elapsed = time.time() - started
+            passed = result.flag == flag
+            solved += passed
+            if fh is not None:
+                meta = {"type": "meta", "name": name, "passed": passed, "flag": result.flag,
+                        "tool_calls": result.tool_calls, "elapsed_s": round(elapsed, 2),
+                        "final_text": result.final_text}
+                sink(meta)
         finally:
-            if cleanup:
-                cleanup(target)
-        elapsed = time.time() - started
-        passed = result.flag == flag
-        solved += passed
+            if fh is not None:
+                fh.close()
         print(f"{'PASS' if passed else 'FAIL'} {name} "
               f"({result.tool_calls} tool calls, {elapsed:.1f}s)\n")
-        if out_dir is not None:
-            meta = {"type": "meta", "name": name, "passed": passed, "flag": result.flag,
-                    "tool_calls": result.tool_calls, "elapsed_s": round(elapsed, 2),
-                    "final_text": result.final_text}
-            path = out_dir / f"{name}.jsonl"
-            with path.open("w", encoding="utf-8") as fh:
-                for event in [*events, meta]:
-                    fh.write(json.dumps(event, ensure_ascii=False) + "\n")
+        if path is not None:
             print(f"transcript: {path}")
     print(f"Solved {solved}/{len(selected)}")
     return solved
