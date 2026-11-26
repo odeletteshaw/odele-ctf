@@ -25,12 +25,11 @@ Built = tuple[str | None, list[Tool], str, str, Callable[[], None]]
 
 
 def _system_with_techniques(system: str, category: str) -> str:
-    """Append the category's reusable technique cards to the system prompt."""
+    """Append a compact index of the category's techniques to the system prompt."""
     tech = load_techniques(category)
     if tech:
         return system + (
-            "\n\n--- Reference: known techniques for this category (study these before "
-            "inventing your own) ---\n" + tech
+            "\n\n--- Technique index (search_knowledge to expand a specific one) ---\n" + tech
         )
     return system
 

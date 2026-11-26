@@ -23,11 +23,12 @@ from tools.http import (  # noqa: E402
     multi_http_tool,
     new_http_client,
 )
+from tools.knowledge import knowledge_tool  # noqa: E402
 from tools.phar import phar_tool  # noqa: E402
 from tools.sandbox import python_tool  # noqa: E402
 
 SYSTEM_PROMPT = """You are an expert web penetration tester solving a CTF challenge.
-You have four tools:
+You have five tools:
 - http_request: send ONE HTTP request to the challenge target and read the full response.
 - http_batch: send up to 60 HTTP requests in one call (one compact line each) to fuzz or
   brute-force many candidate paths/params at once; follow up on hits with http_request.
@@ -38,6 +39,12 @@ You have four tools:
   HMAC, signing or forging tokens, brute-forcing a weak secret, breaking a cipher. It runs
   in the SAME persistent workspace download_file writes into, so it can read those files
   (os.listdir('.'), open('name','rb'), zipfile.ZipFile('name'), ...).
+- search_knowledge: search the technique knowledge base for a specific exploitation
+  technique and get its concrete steps (see the index below for what's available). Use it
+  the moment you suspect a vulnerability class, before re-deriving the exploit by hand.
+
+Method: first identify the likely vulnerability class from the title/description/hint,
+then search_knowledge for that class, then act with the right tool.
 Use run_python to build any payload that needs real computation, then send it with
 http_request. For example, recover a weak JWT secret by brute force, re-sign a token
 with role=admin, then replay it. When you find a backup file (www.zip, .bak, .git, ...),
@@ -120,9 +127,11 @@ def web_tools_multi(
     """Custom-target tools: one http_request/http_batch that can hit any of several origins
     (via a 0-based 'target' argument), a download_file tool that saves raw bytes into the
     workspace, run_python pointed at that same workspace (so it can read downloaded files),
-    plus a phar generator for phar deserialization."""
+    a phar generator for phar deserialization, and search_knowledge for on-demand technique
+    retrieval."""
     return [multi_http_tool(urls, client), multi_http_batch_tool(urls, client),
-            download_tool(urls, client, workdir), python_tool(workdir), phar_tool()]
+            download_tool(urls, client, workdir), python_tool(workdir), phar_tool(),
+            knowledge_tool("web")]
 
 
 def solve_web(
