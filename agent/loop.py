@@ -218,15 +218,17 @@ def run_loop(
             emit({"type": "guidance", "text": "(auto) flag already found — report it"})
         # Break tool-call loops: if the model repeats an exact call it already made, inject a
         # supervisor note telling it to review its earlier findings and change tack instead of
-        # burning the turn budget on the same doomed attempt.
+        # burning the turn budget on the same doomed attempt. Once a flag has surfaced, the
+        # "report it now" note above is the only instruction worth sending.
         for key in seen_this_turn:
+            if flag_hint_sent:
+                break
             if repeat_counts[key] >= 2 and key not in nudged_repeats:
                 nudged_repeats.add(key)
                 nudge = (
-                    "You are repeating a tool call you already made — the same request with "
-                    "the same effect. Stop and review your earlier findings for anything you "
-                    "missed, re-check your assumptions/payload, then take a DIFFERENT step — do "
-                    "not repeat a technique that already failed."
+                    "You have sent essentially the same request again (same endpoint/payload). "
+                    "If the response is not changing, repeating it will not give a new answer: "
+                    "re-check your payload and assumptions, then take a DIFFERENT step."
                 )
                 if diagnostic:
                     nudge += "\n\nDiagnostic checklist:\n" + diagnostic

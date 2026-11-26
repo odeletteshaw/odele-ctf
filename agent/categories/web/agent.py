@@ -64,6 +64,10 @@ Method:
 - Read every response as an oracle. Error messages, status codes, reflected input,
   resolved paths, and header/cookie changes tell you what the server did. Let each
   response narrow the next request. Never repeat an identical request.
+- If a parameter has no visible effect on the response, suspect the HANDLER, not the
+  payload: a static landing page can advertise a parameter it never implements. Enumerate
+  sibling routes (/view, /read, /download, /file, /api, ...) — http_batch is good for this —
+  and read 404/error text, which often names the real path or the web root.
 - Don't conclude or give up until you actually have the flag. When a technique stalls,
   switch to a genuinely different attack class instead of retrying near-variations of the
   same failed one — there is usually more than one way in, so keep forming new hypotheses.
