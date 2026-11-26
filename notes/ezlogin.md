@@ -25,7 +25,7 @@ if($url) {
 
 ## gopher 编码坑
 
-通用技术（载荷预编码 + 双重编码）已提炼到 [knowledge/techniques/web/gopher-ssrf.md](../knowledge/techniques/web/gopher-ssrf.md)，这里不重复。这道题专属的就一句：SSRF 点是 `POST /y0u_nev3r_gue5s_1t.php` 的 `url` 参数，用 gopher 打 `127.0.0.1:80` 的内网 Apache。
+通用技术（载荷预编码 + 双重编码）已提炼到 [agent/knowledge/techniques/web/gopher-ssrf.md](../agent/knowledge/techniques/web/gopher-ssrf.md)，这里不重复。这道题专属的就一句：SSRF 点是 `POST /y0u_nev3r_gue5s_1t.php` 的 `url` 参数，用 gopher 打 `127.0.0.1:80` 的内网 Apache。
 
 ## 已通过的部分
 

@@ -30,20 +30,21 @@
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# 2. 密钥：.env 里放 DEEPSEEK_API_KEY（gitignored，core/config.py 自动加载）
+# 2. 密钥：首次可在 .env 里放 DEEPSEEK_API_KEY（gitignored，agent/config.py 自动加载），
+#    启动控制台后也可以直接在「配置管理」页里改（存本地数据库）
 echo 'DEEPSEEK_API_KEY=sk-...' > .env
 
 # 3. 跑评测（随机 flag，答案无法靠猜）
-python web/evaluate.py sqli_login        # 跑单题
-python crypto/evaluate.py                # 跑全部 crypto 题
+python agent/categories/web/evaluate.py sqli_login        # 跑单题
+python agent/categories/crypto/evaluate.py                # 跑全部 crypto 题
 ```
 
 离线循环测试**不需要 API key**（脚本化假模型驱动真实工具）：
 
 ```bash
-python web/test_offline.py
-python crypto/test_offline.py
-python reverse/test_offline.py
+python agent/categories/web/test_offline.py
+python agent/categories/crypto/test_offline.py
+python agent/categories/reverse/test_offline.py
 ```
 
 Web 控制台（前后端分离）：
@@ -57,21 +58,33 @@ cd frontend && npm install && npm run dev
 # 浏览器打开 http://localhost:5173（dev server 自动把 /api 代理到 8765）
 ```
 
-切换模型/厂商：环境变量 `CTF_API_BASE` / `CTF_MODEL` / `CTF_API_KEY`（真实环境变量优先于 `.env`）。
+控制台里「配置管理」页可直接改模型 / API Base / API Key / 平台 token，「团队」页改方向分工；
+这些配置存本地数据库 `~/.odele-ctf/sessions.db`（权限 0600），保存后对新任务生效。
+环境变量 `CTF_API_BASE` / `CTF_MODEL` / `CTF_API_KEY` 与 `.env` 只作首次回退。
 
 ## 目录结构
 
+三层：**frontend 管页面，backend 管数据库与 API，agent 管解题（知识 / 工具 / 题型）**。
+
 ```
-backend/    后端（全部）：FastAPI 服务 app.py + 编排 controller / manager / worker /
-            builder，以及 platform（CTF2 REST 客户端）、autosolve（平台题 → spec）、
-            team（RAFT 分工）
-core/       跨题型通用底座：config（模型配置）、agent（Tool + run_loop + solve）、
-            sandbox（run_python / run_command 沙箱）、evaluate（benchmark 循环）、offline
-tools/      agent 工具（「能力」），各题型从同一个菜单组装：
-            sandbox.py python_tool · http.py http_tool · process.py process_tool
-            chat.py message_tool · bin.py disassemble_tool / run_binary_tool
-            oracle.py query_oracle（批量查询交互式 oracle）
-<大类>/     每个题型同构：agent.py（prompt + 工具组装）+ challenges/（一题一文件）+ evaluate.py
+frontend/   控制台前端：React + Material-UI（Vite）；src/pages/ 一页一文件
+backend/    控制台后端（数据库 + API，纯服务层）：
+  app.py       FastAPI REST + WebSocket
+  db.py        SQLite：sessions / transcript / memories / settings
+  settings.py  配置存取（tokens / 团队 / 模型），API 只返回打码值
+  manager.py   session 生命周期 · controller.py autosolve / retry 编排
+  worker.py    解题子进程入口 · platform.py CTF2 REST 客户端
+  autosolve.py 平台题 → spec · team.py 方向 → agent 分工
+agent/      解题能力层（纯库，不依赖 frontend/backend）：
+  loop.py      Tool + run_loop + solve + flag 提取
+  config.py    模型/厂商配置（.env 回退） · sandbox.py run_python / run_command 沙箱
+  evaluate.py  benchmark 循环 · offline.py 离线测试 helper
+  taskbuilder.py  spec → 一次解题任务（工具 + prompt）
+  tools/       agent 工具（「能力」）：sandbox / http / process / chat / bin / oracle /
+               knowledge / phar
+  knowledge/   技巧卡（按类别，供 search_knowledge 检索）
+  categories/  七个题型，每个同构：agent.py（prompt + 工具组装）+ challenges/ +
+               evaluate.py
 ```
 
 ## 设计原则
@@ -79,12 +92,12 @@ tools/      agent 工具（「能力」），各题型从同一个菜单组装�
 - **工具是能力不是解法**：agent 在 `run_python` 里自己写解题代码；不存在共享解题库。
 - **hermetic 且安全**：靶题用虚拟状态模拟漏洞，模型输入不接触真实 shell / 文件系统 / 网络。
 - **每次随机 flag**（`flag{token_hex(12)}`），答案无法靠猜或记忆。
-- **三类代码严格分开**：agent 工具（`tools/`）、出题 helper（各题型 `challenges/_common.py`，agent
-  永远碰不到）、评测框架（`core/`）。
+- **分层且单向依赖**：`backend` 可以 import `agent`，`agent` 不反向依赖 `backend`；出题 helper
+  （各题型 `challenges/_common.py`）agent 永远碰不到。
 
 ## 沙箱
 
-`core/sandbox.py` 在隔离子进程里跑模型给的代码/二进制：临时目录作 cwd/HOME、`python3 -I`、
+`agent/sandbox.py` 在隔离子进程里跑模型给的代码/二进制：临时目录作 cwd/HOME、`python3 -I`、
 **禁网**（macOS `sandbox-exec (deny network*)`，Linux 私有网络命名空间）、CPU/文件 rlimit + 墙钟
 超时。复用项目 venv，所以装好的库（pycryptodome、sympy、z3-solver）在沙箱里都能 import。
 

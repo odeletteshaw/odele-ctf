@@ -1,8 +1,10 @@
 """FastAPI server for the Odele CTF console (frontend/backend split).
 
-Exposes the session list + autosolve actions as REST and pushes "changed" over
-WebSocket. The heavy logic lives in backend.controller (autosolve/retry) and
-backend.manager (sessions); this file is a thin HTTP layer.
+Exposes the session list, autosolve actions, and local configuration (platform tokens,
+team mapping, model/provider settings) as REST, and pushes "changed" over WebSocket.
+The heavy logic lives in backend.controller (autosolve/retry) and backend.manager
+(sessions); this file is a thin HTTP layer. Configuration is stored in the DB
+(backend.settings) and editable from the Settings / Team pages.
 
 Run:  python -m backend.app        (or: uvicorn backend.app:app --reload)
 """
@@ -19,10 +21,14 @@ from pydantic import BaseModel
 
 from backend.controller import Controller
 from backend.manager import Manager, Session
+from backend.settings import apply_model_settings, settings
 from backend.team import load_team, save_team
 
 manager = Manager()
 controller = Controller(manager)
+# Stored provider settings (model / API base / key) take over from .env at startup;
+# workers spawned later inherit them through the environment.
+apply_model_settings(settings)
 
 
 # ---- background loop: advance the autosolve controller ---------------------
@@ -155,6 +161,45 @@ def config():
     return controller.config()
 
 
+class ModelConfig(BaseModel):
+    model: str | None = None
+    api_base: str | None = None
+    api_key: str | None = None
+    api_timeout: float | None = None
+
+
+@app.put("/api/config")
+def update_config(body: ModelConfig):
+    settings.update_model(body.model_dump())
+    apply_model_settings(settings)
+    controller.notify_changed()
+    return controller.config()
+
+
+@app.get("/api/tokens")
+def list_tokens():
+    return {"tokens": settings.token_hints()}
+
+
+@app.post("/api/tokens")
+def add_token(body: dict):
+    token = str(body.get("token") or "").strip()
+    if not token:
+        return JSONResponse({"error": "token is required"}, status_code=400)
+    if len(settings.tokens()) >= 16:
+        return JSONResponse({"error": "最多配置 16 个 token"}, status_code=400)
+    settings.add_token(token)
+    controller.notify_changed()
+    return {"tokens": settings.token_hints()}
+
+
+@app.delete("/api/tokens/{index}")
+def delete_token(index: int):
+    settings.remove_token(index)
+    controller.notify_changed()
+    return {"tokens": settings.token_hints()}
+
+
 @app.post("/api/config/clear_failed")
 def clear_failed():
     n = controller.clear_failed()
@@ -185,6 +230,7 @@ def set_team(body: dict):
     if not isinstance(members, list):
         return JSONResponse({"error": "members must be a list"}, status_code=400)
     save_team(members)
+    controller.notify_changed()
     return {"ok": True}
 
 

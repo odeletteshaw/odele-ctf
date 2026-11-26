@@ -11,8 +11,8 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.agent import generate_writeup, solve  # noqa: E402
-from backend.builder import build_task  # noqa: E402
+from agent.loop import generate_writeup, solve  # noqa: E402
+from agent.taskbuilder import build_task  # noqa: E402
 
 
 def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any) -> None:
@@ -43,7 +43,7 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any) -> None:
         category = spec.get("category") or "web"
         diagnostic = None
         try:
-            diagnostic = getattr(importlib.import_module(f"{category}.agent"), "DIAGNOSTIC", None)
+            diagnostic = getattr(importlib.import_module(f"agent.categories.{category}.agent"), "DIAGNOSTIC", None)
         except Exception:
             diagnostic = None
         events_q.put({"type": "status", "status": "running"})

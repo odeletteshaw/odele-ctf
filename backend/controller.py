@@ -10,10 +10,10 @@ import threading
 import time
 from typing import Any, Callable
 
-import core.config as cfg
 from backend.autosolve import PLATFORM_CATEGORY, prepare_challenge
 from backend.manager import Manager, Session
 from backend.platform import PlatformClient, PlatformError, list_tokens
+from backend.settings import mask_secret, settings
 from backend.team import direction_to_token_index, load_team
 
 FAILED_STATUSES = ("done", "failed", "error", "cancelled")
@@ -126,18 +126,22 @@ class Controller:
         return session.id
 
     def config(self) -> dict:
-        key = "未设置"
-        if cfg.API_KEY:
-            key = f"sk-…{cfg.API_KEY[-4:]}"
+        model = settings.model_config()
         return {
-            "model": cfg.DEFAULT_MODEL,
-            "api_base": cfg.API_BASE,
-            "api_key": key,
-            "api_timeout": cfg.API_TIMEOUT,
-            "tokens": len(list_tokens()),
+            "model": model["model"],
+            "api_base": model["api_base"],
+            "api_key": mask_secret(model["api_key"]) or "未设置",
+            "api_timeout": model["api_timeout"],
+            "token_count": len(settings.tokens()),
+            "token_hints": settings.token_hints(),
             "failed_count": len(self.manager.failed_ids()),
             "memory_count": len(self.manager.list_memories()),
+            "db_path": str(settings.path),
         }
+
+    def notify_changed(self) -> None:
+        """Public hook, e.g. after settings are updated through the API."""
+        self._bump()
 
     def clear_failed(self) -> int:
         n = len(self.manager.failed_ids())

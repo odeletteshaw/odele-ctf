@@ -3,8 +3,8 @@
 A thin wrapper over the endpoints an Agent is allowed to use: identify itself, find
 unsolved challenges, read a challenge and download its attachments, start/read a target
 environment, submit a flag, and log solution notes. Auth is `Authorization: Bearer
-<CTF2_AGENT_TOKEN>`; the token is read from the environment (loaded from .env by
-core.config).
+<CTF2_AGENT_TOKEN>`; tokens are stored in the console DB (editable from the Settings
+page) with the environment as a fallback.
 
 Responses use the envelope {success, data|error}. Errors raise PlatformError with the
 code/key from `error`.
@@ -14,24 +14,14 @@ import os
 
 import httpx
 
-from core import config  # noqa: F401  (loads .env into os.environ)
+from backend.settings import settings  # also loads .env via agent.config
 
 DEFAULT_BASE = "https://ctf2.dasctf.com"
 
 
 def list_tokens() -> list[str]:
-    """Return the CTF2 agent tokens from env (CTF2_AGENT_TOKEN_0/1/2..., or the legacy
-    CTF2_AGENT_TOKEN as a single fallback)."""
-    tokens: list[str] = []
-    for i in range(16):
-        t = os.environ.get(f"CTF2_AGENT_TOKEN_{i}")
-        if t:
-            tokens.append(t)
-        else:
-            break
-    if not tokens and os.environ.get("CTF2_AGENT_TOKEN"):
-        tokens.append(os.environ["CTF2_AGENT_TOKEN"])
-    return tokens
+    """CTF2 agent tokens: the DB-configured list, or the .env/environment fallback."""
+    return settings.tokens()
 
 
 class PlatformError(Exception):

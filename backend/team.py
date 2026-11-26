@@ -1,14 +1,18 @@
 """CTF agent team configuration (RAFT-style: agents with roles/directions).
 
-A team maps each challenge direction to the agent (token) that specializes in it,
-so multiple agents work in parallel on different directions without colliding.
-Stored as JSON at ~/.odele-ctf/team.json; falls back to a default when absent.
+A team maps each challenge direction to the agent (token) that specializes in it, so
+multiple agents work in parallel on different directions without colliding. The mapping
+lives in the console database and is editable from the Team page. A legacy
+~/.odele-ctf/team.json is imported once when the database has no team yet (the file is
+left in place as a backup); DEFAULT_TEAM is the final fallback.
 """
 
 import json
 from pathlib import Path
 
-CONFIG_PATH = Path.home() / ".odele-ctf" / "team.json"
+from backend.settings import settings
+
+LEGACY_PATH = Path.home() / ".odele-ctf" / "team.json"
 
 DEFAULT_TEAM = [
     {"token_index": 0, "name": "odele", "directions": ["web"]},
@@ -17,20 +21,29 @@ DEFAULT_TEAM = [
 ]
 
 
+def _legacy_team() -> list[dict] | None:
+    if not LEGACY_PATH.exists():
+        return None
+    try:
+        members = json.loads(LEGACY_PATH.read_text()).get("members")
+    except (OSError, ValueError):
+        return None
+    return members if isinstance(members, list) and members else None
+
+
 def load_team() -> list[dict]:
-    if CONFIG_PATH.exists():
-        try:
-            members = json.loads(CONFIG_PATH.read_text()).get("members")
-            if isinstance(members, list) and members:
-                return members
-        except Exception:
-            pass
+    stored = settings.get("team")
+    if isinstance(stored, list) and stored:
+        return stored
+    legacy = _legacy_team()
+    if legacy:
+        settings.set("team", legacy)  # migrate once
+        return legacy
     return DEFAULT_TEAM
 
 
 def save_team(members: list[dict]) -> None:
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CONFIG_PATH.write_text(json.dumps({"members": members}, ensure_ascii=False, indent=2))
+    settings.set("team", members)
 
 
 def direction_to_token_index(team: list[dict]) -> dict[str, int]:

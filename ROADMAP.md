@@ -39,7 +39,7 @@ z3(angr 在 arm64 macOS 跑不动 Mach-O,真 angr 留待 x86_64 ELF)。
 | 哈希/PRNG | 弱哈希爆破 ✅ · LCG 预测 ✅ · 梅森旋转预测 ✅ · 长度扩展 ☐ · MD5 碰撞 ☐ | |
 | 格 | SVP/LLL ✅(lattice_svp) · HNP+LLL ✅(hnp) · LWE ☐ · NTRU ☐ · Coppersmith ☐ | fpylll 已装(3.14 有 wheel) |
 
-> 注:交互式 oracle 已实现(`tools/oracle.py`,批量查询,一次发最多 300 个)。LSB oracle 一次批查询
+> 注:交互式 oracle 已实现(`agent/tools/oracle.py`,批量查询,一次发最多 300 个)。LSB oracle 一次批查询
 > 即可解;padding oracle、ECB byte-at-a-time 仍是能力边界——批量工具能省轮次,但模型跨多字节的
 > 顺序状态编排(每字节依赖上一字节的中间值)仍打不穿。要彻底解决,得把 oracle 做成沙箱内可直接调用的
 > 函数(让模型在 run_python 里写循环),而不是逐轮 tool call。
@@ -108,7 +108,7 @@ flag XOR 混淆编译进去。agent 用 `objdump -d -s` 反汇编、沙箱跑二
 | firm | 无过滤,模型硬拒 → 纯越狱 | ⚠ 能力边界 |
 | both_filters | 双过滤 + 模型拒答 → 天花板 | ⚠ 能力边界(原理可解) |
 
-以后可加:间接提示注入(读被投毒的外部文本)、带工具的靶子、语义级输出过滤。详见 `ai/TODO.md`。
+以后可加:间接提示注入(读被投毒的外部文本)、带工具的靶子、语义级输出过滤。详见 `agent/categories/ai/TODO.md`。
 
 ## 8. 现代 / 可选大类
 - **Blockchain** — 智能合约重入等,需本地 EVM。
@@ -119,7 +119,8 @@ flag XOR 混淆编译进去。agent 用 `objdump -d -s` 反汇编、沙箱跑二
 
 ## 扩展方式
 
-- 加 web/crypto 子方向:在 `web/challenges/` 或 `crypto/challenges/` 加一文件(接口见 CLAUDE.md),
-  注册进 `evaluate.py`,先脚本验证可解再跑模型。
-- 开新大类:先建该方向的 agent 工具(放 `tools/`),再照 web/crypto 的模式建 `<大类>/agent.py`
-  + `challenges/` + `evaluate.py`。
+- 加 web/crypto 子方向:在 `agent/categories/web/challenges/` 或
+  `agent/categories/crypto/challenges/` 加一文件(接口见 CLAUDE.md),注册进 `evaluate.py`,
+  先脚本验证可解再跑模型。
+- 开新大类:先建该方向的 agent 工具(放 `agent/tools/`),再照 web/crypto 的模式建
+  `agent/categories/<大类>/agent.py` + `challenges/` + `evaluate.py`。

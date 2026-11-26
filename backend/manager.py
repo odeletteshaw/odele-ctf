@@ -10,7 +10,6 @@ change."""
 import itertools
 import json
 import multiprocessing as mp
-import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -18,44 +17,11 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from backend import db  # noqa: E402
 from backend.worker import worker_main  # noqa: E402
 
 # spawn is the safe start method on macOS (fork + threads is unsafe there).
 _CTX = mp.get_context("spawn")
-
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS folders (
-    name TEXT PRIMARY KEY
-);
-CREATE TABLE IF NOT EXISTS sessions (
-    id INTEGER PRIMARY KEY,
-    category TEXT,
-    title TEXT,
-    folder TEXT,
-    status TEXT,
-    flag TEXT,
-    spec TEXT,
-    state TEXT,
-    transcript TEXT,
-    created_at REAL
-);
-CREATE INDEX IF NOT EXISTS idx_sessions_folder ON sessions(folder);
-CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
-CREATE TABLE IF NOT EXISTS failed_challenges (
-    challenge_id TEXT PRIMARY KEY,
-    direction TEXT,
-    ts REAL
-);
-CREATE TABLE IF NOT EXISTS memories (
-    id INTEGER PRIMARY KEY,
-    category TEXT,
-    title TEXT,
-    content TEXT,
-    source TEXT,
-    created_at REAL
-);
-CREATE INDEX IF NOT EXISTS idx_memories_category ON memories(category);
-"""
 
 
 def fresh_state() -> dict[str, Any]:
@@ -218,14 +184,8 @@ class Manager:
     """Holds the open sessions, their folders, and which session is active."""
 
     def __init__(self, path: str | Path | None = None) -> None:
-        self.path = Path(path) if path else (Path.home() / ".odele-ctf" / "sessions.db")
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._db = sqlite3.connect(str(self.path), check_same_thread=False)
-        self._db.executescript(_SCHEMA)
-        # migrate older DBs that predate the created_at column
-        cols = [r[1] for r in self._db.execute("PRAGMA table_info(sessions)")]
-        if "created_at" not in cols:
-            self._db.execute("ALTER TABLE sessions ADD COLUMN created_at REAL")
+        self.path = Path(path) if path else db.DEFAULT_PATH
+        self._db = db.connect(self.path)
         self.sessions: list[Session] = []
         self.folders: list[str] = []
         self.active: Session | None = None

@@ -5,39 +5,46 @@
 
 ## 目录结构
 
+三层：**frontend 管页面，backend 管数据库与 API，agent 管解题（知识 / 工具 / 题型）**。
+依赖单向：`backend` → `agent`，`agent` 绝不 import `backend`。
+
 ```
-core/        跨题型通用的底座
-  config.py    厂商/模型配置；加载 .env（真实环境变量优先于 .env）
-  agent.py     Tool 数据类、run_loop、solve()、flag 提取（FLAG_PATTERN）
-  sandbox.py   沙箱引擎：run_python / run_command（隔离子进程、禁网、rlimit）
-  evaluate.py  benchmark()：各题型共享的 PASS/FAIL 评测循环
-  offline.py   tool_call()：离线测试（无 API key）的假模型 helper
-tools/        agent 工具（「能力」），每个题型从这里组装
-  sandbox.py python_tool() · http.py http_tool() · process.py process_tool()
-  chat.py message_tool() · bin.py disassemble_tool()/run_binary_tool()
-backend/      Web 控制台后端：FastAPI app.py（REST + WebSocket）+ 编排
-  manager.py   session 生命周期 + SQLite 持久化
-  worker.py    解题子进程入口 · builder.py 从 spec 组装题型任务
+frontend/     控制台前端：React + Material-UI（Vite），src/pages/ 一页一文件
+backend/      控制台后端（数据库 + API，纯服务层）
+  app.py        FastAPI REST + WebSocket
+  db.py         SQLite schema / 连接：sessions、transcript、memories、settings
+  settings.py   配置存取：平台 tokens、团队、模型配置（DB 0600；接口只返回打码值）
+  manager.py    session 生命周期 + 持久化 · worker.py 解题子进程入口
   controller.py autosolve / retry 控制循环
-  platform.py  CTF2 REST 客户端 · autosolve.py 平台题 → spec · team.py RAFT 分工
-frontend/     Web 控制台前端：React + Material-UI（Vite），src/pages/ 一页一文件
-web/           Web 题型：HTTP 靶题
-  agent.py       prompt + 工具组装（http_request + run_python）；origin 锁定
-  challenges/    一题一文件；_harness.py 是共享 HTTP server，_common.py 是出题 helper
-  evaluate.py    用随机 flag 跑 agent 过一遍靶题；输出 PASS/FAIL
-  test_offline.py  用脚本化的假模型驱动循环（不需要 API key）
-crypto/        密码学题型：纯计算（只给 run_python）
-  agent.py、challenges/、evaluate.py、test_offline.py （结构同 web）
-pwn/ misc/ forensics/ ai/ reverse/   其余五类，同 web/crypto 结构（各自 agent.py + challenges/ + evaluate.py）
+  platform.py   CTF2 REST 客户端 · autosolve.py 平台题 → spec · team.py RAFT 分工
+agent/        解题能力层（纯库）
+  loop.py       Tool、run_loop、solve()、flag 提取（FLAG_PATTERN）
+  config.py     厂商/模型配置；加载 .env（真实环境变量优先于 .env）
+  sandbox.py    沙箱引擎：run_python / run_command（隔离子进程、禁网、rlimit）
+  evaluate.py   benchmark()：各题型共享的 PASS/FAIL 评测循环
+  offline.py    tool_call()：离线测试（无 API key）的假模型 helper
+  taskbuilder.py  spec → 一次解题任务（工具 + prompt），worker 调用
+  tools/        agent 工具（「能力」），每个题型从这里组装
+    sandbox.py python_tool() · http.py http_tool() · process.py process_tool()
+    chat.py message_tool() · bin.py disassemble_tool()/run_binary_tool()
+  knowledge/    技巧卡（按类别）+ search_knowledge 检索
+  categories/web/     Web 题型：HTTP 靶题
+    agent.py       prompt + 工具组装（http_request + run_python）；origin 锁定
+    challenges/    一题一文件；_harness.py 是共享 HTTP server，_common.py 是出题 helper
+    evaluate.py    用随机 flag 跑 agent 过一遍靶题；输出 PASS/FAIL
+    test_offline.py  用脚本化的假模型驱动循环（不需要 API key）
+  categories/crypto/  密码学题型：纯计算（只给 run_python）
+    agent.py、challenges/、evaluate.py、test_offline.py （结构同 web）
+  categories/{pwn,misc,forensics,ai,reverse}/  其余五类，同 web/crypto 结构
 ```
 
-跑评测：`python web/evaluate.py [名字...]` 或 `python crypto/evaluate.py [名字...]`
+跑评测：`python agent/categories/web/evaluate.py [名字...]` 或 `python agent/categories/crypto/evaluate.py [名字...]`
 （不给名字 = 全跑）。需要 `DEEPSEEK_API_KEY`（见「密钥」）。离线循环测试不需要 key：
-`python web/test_offline.py`。
+`python agent/categories/web/test_offline.py`。
 
 ## agent 怎么工作
 
-- `core.agent.Tool(name, description, parameters, handler)` 是模型能调用的一个能力。
+- `agent.loop.Tool(name, description, parameters, handler)` 是模型能调用的一个能力。
   `run_loop(chat, tools, system, user, max_turns)` 驱动一个 OpenAI 风格的 tool-calling
   循环；`solve(tools, system_prompt, user_prompt)` 接上真实模型。
 - 一个题型 = **一段 system prompt + 选用哪几个 Tool**。Web 给模型 `http_request` 和
@@ -52,14 +59,14 @@ pwn/ misc/ forensics/ ai/ reverse/   其余五类，同 web/crypto 结构（各�
 解题库。agent 要在 `run_python` 里自己写解题代码。共享解题库等于把答案送给 agent，会让这套
 benchmark 失去意义。
 
-**目录职责（已重构）：** agent 工具集中在顶层 `tools/` 包，用工厂函数从同一个菜单组装
-（`tools/sandbox.py: python_tool()`、`tools/http.py: http_tool(target)`、`tools/process.py:
-process_tool(proc)`、`tools/chat.py: message_tool(send)`、`tools/bin.py:
+**目录职责：** agent 工具集中在 `agent/tools/` 包，用工厂函数从同一个菜单组装
+（`agent/tools/sandbox.py: python_tool()`、`agent/tools/http.py: http_tool(target)`、`agent/tools/process.py:
+process_tool(proc)`、`agent/tools/chat.py: message_tool(send)`、`agent/tools/bin.py:
 disassemble_tool(binary)` / `run_binary_tool(binary)`）。出题侧共享 helper 放在各题型的
 `challenges/_common.py`（web 的 JWT/base64url/bearer、reverse 的编译 helper——agent 永远
-碰不到）。评测框架收在 `core/`：`core/evaluate.py: benchmark()` 通用 PASS/FAIL 循环、
-`core/offline.py: tool_call()` 离线测试 helper。三类保持分开：agent 工具（`tools/`）、出题
-helper（`challenges/_common.py`）、评测框架（`core/`）。
+碰不到）。评测框架收在 `agent/`：`agent/evaluate.py: benchmark()` 通用 PASS/FAIL 循环、
+`agent/offline.py: tool_call()` 离线测试 helper。三类保持分开：agent 工具（`agent/tools/`）、出题
+helper（`challenges/_common.py`）、评测框架（`agent/`）。
 
 ## 出题规范
 
@@ -68,7 +75,7 @@ helper（`challenges/_common.py`）、评测框架（`core/`）。
   （包括这个 `.env`）或打到真实目标。
 - **各题型接口：**
   - web：`DESCRIPTION: str` 和 `start(flag) -> (server, base_url)`。server 绑
-    `127.0.0.1:0`、跑在 daemon 线程里；`web/challenges/_harness.py` 提供路由
+    `127.0.0.1:0`、跑在 daemon 线程里；`agent/categories/web/challenges/_harness.py` 提供路由
     （`Request`、`start_server`）。
   - crypto：`DESCRIPTION: str` 和 `make(flag) -> str`，返回题面文本（把 flag 加密/编码进去的
     密文和参数）。没有 server。
@@ -86,7 +93,7 @@ helper（`challenges/_common.py`）、评测框架（`core/`）。
 
 ## 沙箱（run_python）
 
-`core/sandbox.py` 在隔离子进程里跑模型给的 Python：临时目录作为 cwd/HOME、`python3 -I`、
+`agent/sandbox.py` 在隔离子进程里跑模型给的 Python：临时目录作为 cwd/HOME、`python3 -I`、
 **禁网**（macOS `sandbox-exec (deny network*)`，Linux 私有网络命名空间）、CPU/文件 rlimit
 和墙钟超时（~15s CPU）。它复用项目 venv，所以装好的库（pycryptodome、sympy）在里面能 import。
 
@@ -106,14 +113,17 @@ helper（`challenges/_common.py`）、评测框架（`core/`）。
   从 2000 样本/5.3KB 降到 ~400/1.1KB 缓解了机械负担)。(2026-11-11 起 `wav_lsb` 和 `ecb_paste`
   已能被 DeepSeek 解出——前者是模型变强了,后者靠 web prompt 补了分组密码攻击指导;能力边界现只剩
   `ai/firm`、`ai/both_filters`。)真要塞大件,现已有「可持久化工作区」机制(`run_python(workdir=...)`
-  + `forensics/workspace.py`,见 `large_blob`),不再需要把大附件 base64 塞进 prompt。
+  + `agent/categories/forensics/workspace.py`,见 `large_blob`),不再需要把大附件 base64 塞进 prompt。
 - 本 harness 会缓冲后台/管道命令的 stdout；要看实时进度，让脚本把结果写进文件再读那个文件。
 
-## 密钥
+## 密钥与配置
 
-`DEEPSEEK_API_KEY` 放在 `.env`（gitignored，由 `core/config.py` 加载）。切换厂商用
-`CTF_API_BASE` / `CTF_MODEL` / `CTF_API_KEY`。**永远不要提交 key**——每次提交前，确认 `.env`
-没被 staged、且 diff 里没有 key。
+模型 / API Base / API Key / 平台 token / 团队分工都存本地数据库
+`~/.odele-ctf/sessions.db` 的 `settings` 表（文件权限 0600），可在控制台「配置管理」「团队」页直接改；
+接口只返回打码值。`.env`（gitignored，由 `agent/config.py` 加载）与真实环境变量只作首次回退，
+启动时 `backend.settings.apply_model_settings()` 会把这些值同步进 `os.environ` 与 `agent.config`
+（worker 子进程通过环境继承）。**永远不要提交 key**——每次提交前，确认 `.env` 和数据库文件
+都没被 staged、且 diff 里没有 key。
 
 ## 当前状态
 
@@ -123,12 +133,12 @@ helper（`challenges/_common.py`）、评测框架（`core/`）。
   kid)/ 反序列化(pickle)/ 分组密码(ECB 剪切粘贴、CBC 翻转)/ 限流绕过 / session 伪造 等。
 - **crypto**:24 道题,DeepSeek 几乎全解。古典(仿射/Vigenère/替换)、RSA(立方根/Fermat/Wiener/
   共模/Håstad/共因子/LSB oracle)、对称(CTR/GCM)、ECC、哈希/PRNG(LCG/梅森旋转)、格(SVP/LLL、HNP)。**能力边界**:
-  `padding_oracle`、`ecb_byte_at_a_time`(跨多字节 oracle 编排打不穿,脚本可解;用 `tools/oracle.py`
+  `padding_oracle`、`ecb_byte_at_a_time`(跨多字节 oracle 编排打不穿,脚本可解;用 `agent/tools/oracle.py`
   批量查询)。
 - **misc**:5 道题(brainfuck、compression_layers、xor_sequence、morse、pyjail),DeepSeek 全解。
   pyjail 用 `send_code` 工具打受限 eval。
 - **forensics**:10 道题,DeepSeek 全解。文件雕刻 / 归档套娃 / pcap / 隐写(WAV、图像 LSB)/ HTTP
-  chunked 协议还原。小附件 base64 嵌题面;大附件走**可持久化工作区**(`forensics/workspace.py`)。
+  chunked 协议还原。小附件 base64 嵌题面;大附件走**可持久化工作区**(`agent/categories/forensics/workspace.py`)。
   Pillow 已装。
 - **pwn**:8 道题,DeepSeek 全解。**模拟**有漏洞的进程:溢出 / ret2win / 格式化串 / canary / 整数
   溢出 / shellcode(玩具 CPU)/ heap UAF(玩具分配器)。工具 = `send_input` + run_python。
