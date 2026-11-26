@@ -63,3 +63,79 @@ def run_binary_tool(binary: Path) -> Tool:
         },
         handler=handler,
     )
+
+
+MAX_TRIAGE_CHARS = 20_000
+
+
+def _triage(binary: Path) -> str:
+    script = Path(__file__).resolve().parent / "triage.py"
+    try:
+        proc = subprocess.run(
+            ["python3", "-I", str(script), str(binary)],
+            capture_output=True, text=True, timeout=60,
+        )
+    except Exception as error:
+        return f"[triage failed: {error}]"
+    out = proc.stdout
+    if proc.stderr:
+        out += ("\n" if out else "") + "[stderr]\n" + proc.stderr
+    if len(out) > MAX_TRIAGE_CHARS:
+        out = out[:MAX_TRIAGE_CHARS] + f"\n[truncated, {len(out)} chars]"
+    return out
+
+
+def triage_tool(binary: Path) -> Tool:
+    return Tool(
+        name="triage",
+        description=(
+            "Identify the target binary in one pass: real file type/arch (from magic bytes, "
+            "not the extension), hashes, entropy (packing/encryption hint), framework/packer "
+            "fingerprints, and a sample of printable strings. Run this FIRST to know what "
+            "you're dealing with before choosing disassemble/run_binary."
+        ),
+        parameters={"type": "object", "properties": {}},
+        handler=lambda _args: _triage(binary),
+    )
+
+
+MAX_STRINGS_CHARS = 20_000
+
+
+def _strings(binary: Path, min_len: int) -> str:
+    try:
+        proc = subprocess.run(
+            ["strings", "-n", str(min_len), str(binary)],
+            capture_output=True, text=True, timeout=30,
+        )
+    except Exception as error:
+        return f"[strings failed: {error}]"
+    out = proc.stdout
+    if len(out) > MAX_STRINGS_CHARS:
+        out = out[:MAX_STRINGS_CHARS] + f"\n[truncated, {len(out)} chars]"
+    return out
+
+
+def strings_tool(binary: Path) -> Tool:
+    def handler(args: dict) -> str:
+        try:
+            min_len = max(4, int(args.get("min_len", 6)))
+        except (TypeError, ValueError):
+            min_len = 6
+        return _strings(binary, min_len)
+
+    return Tool(
+        name="strings",
+        description=(
+            "Dump printable strings (length >= min_len, default 6) from the binary. The "
+            "cheapest way to spot flag fragments, error messages, and format strings — often "
+            "answers the challenge before you disassemble anything."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "min_len": {"type": "integer", "description": "minimum string length (default 6)"},
+            },
+        },
+        handler=handler,
+    )

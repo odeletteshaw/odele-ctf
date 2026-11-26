@@ -71,7 +71,8 @@ def _benchmark(category: str, name: str) -> Built:
     if category == "reverse":  # compiled crackme reached via disassemble + run_binary
         target = challenge.make(flag)
         tools = agent.reverse_tools(target)
-        return flag, tools, agent.SYSTEM_PROMPT, challenge.DESCRIPTION, target.cleanup
+        return flag, tools, _system_with_techniques(agent.SYSTEM_PROMPT, "reverse"), \
+            challenge.DESCRIPTION, target.cleanup
     raise ValueError(f"unsupported category: {category}")
 
 

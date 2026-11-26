@@ -23,11 +23,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.agent import SolveResult, Tool, solve  # noqa: E402
 from reverse.target import ReverseTarget  # noqa: E402
-from tools.bin import disassemble_tool, run_binary_tool  # noqa: E402
+from tools.bin import disassemble_tool, run_binary_tool, strings_tool, triage_tool  # noqa: E402
+from tools.knowledge import knowledge_tool  # noqa: E402
 from tools.sandbox import python_tool  # noqa: E402
 
 SYSTEM_PROMPT = """You are solving a reverse-engineering CTF challenge: a compiled binary (a
 "crackme") that checks some input and, on success, reveals the flag. Your tools:
+- triage: identify the binary in one pass (file type/arch from magic bytes, hashes, entropy,
+  framework/packer fingerprints, a sample of strings). Run this FIRST to know what you have.
+- strings: dump printable strings (min length 6) — the cheapest way to spot flag fragments,
+  error messages, and format strings before disassembling.
 - disassemble: dump the binary's arm64 instructions and every section's raw bytes
   (objdump -d -s). String literals and constant arrays (an encoded flag, a secret key) live
   in the __const / __cstring sections and appear in the hexdump as readable text or byte runs.
@@ -37,9 +42,12 @@ SYSTEM_PROMPT = """You are solving a reverse-engineering CTF challenge: a compil
   the exact input a check demands. z3-solver is available for symbolic/constraint solving:
   recover an input whose (possibly coupled, non-invertible-by-hand) transform matches a target.
 
-Method:
-- Disassemble first and find main(). Read what input is read, what comparison or loop gates
-  the flag, and which data it touches.
+Method (triage-first, top-down, hypothesis-driven):
+- Run triage first to learn what the binary is, then strings for cheap wins, then disassemble
+  to find main() and the check, then run_binary to confirm. Don't read the whole binary
+  blindly — start from the goal (where the flag is printed) and work backward to the input.
+- State a hypothesis ("this loop XORs the input against a key") and confirm it with ONE
+  targeted check instead of reading everything.
 - arm64 objdump notes: small immediates print in DECIMAL (mov w9, #170 means 170 = 0xaa);
   `eor w0, w8, w9` is XOR; `subs`/`cmp` + a conditional branch implements if/==. Constant data
   appears as a hexdump in the section contents — the hex column is the bytes, the right-hand
@@ -50,13 +58,17 @@ Method:
 - When a check couples many input bytes through a non-trivial transform (multiplication,
   shifts, XOR, cyclic mixing), don't brute-force or invert by hand — re-encode the transform
   as z3 bit-vector constraints in run_python and let the solver find the input.
+- Back every conclusion with a coordinate (an address, a byte offset, a symbol) you actually
+  saw in the tool output; if you haven't seen it, say so instead of guessing.
 
 Flags look like flag{...}. Only report a flag you actually observed — printed by the binary or
 decoded from its data. End your final message with the flag on its own line."""
 
 
 def reverse_tools(target: ReverseTarget) -> list[Tool]:
-    return [disassemble_tool(target.binary), run_binary_tool(target.binary), python_tool()]
+    return [triage_tool(target.binary), strings_tool(target.binary),
+            disassemble_tool(target.binary), run_binary_tool(target.binary), python_tool(),
+            knowledge_tool("reverse")]
 
 
 def solve_reverse(
