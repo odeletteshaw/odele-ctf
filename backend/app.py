@@ -62,6 +62,7 @@ def session_to_dict(s: Session) -> dict:
         "status": st.get("status"),
         "flag": st.get("flag"),
         "created_at": _fmt_time(s.created_at),
+        "created_ts": s.created_at or 0,
         "is_running": s.is_running(),
         "tool_calls": st.get("tool_calls", 0),
     }

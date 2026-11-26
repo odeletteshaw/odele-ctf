@@ -4,7 +4,8 @@
 set -e
 cd "$(dirname "$0")"
 
-pkill -f "python.*-m backend.app" 2>/dev/null || true
+# also match the pre-rename "server.app" module so an old process can't hold the port
+pkill -f "python.*-m (server|backend)\.app" 2>/dev/null || true
 sleep 1
 
 nohup .venv/bin/python -m backend.app >/tmp/odele-server.log 2>&1 &

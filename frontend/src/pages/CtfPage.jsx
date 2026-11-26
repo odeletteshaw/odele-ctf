@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import {
   Box, Button, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
   FormControlLabel, Checkbox, TextField, MenuItem, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Paper, Typography,
-  Stack, IconButton, Tooltip, Tabs, Tab,
+  Stack, IconButton, Tooltip, Tabs, Tab, TableSortLabel,
 } from '@mui/material'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import StopIcon from '@mui/icons-material/Stop'
@@ -39,6 +39,10 @@ export default function CtfPage() {
   const [maxn, setMaxn] = useState(3)
   const [detail, setDetail] = useState(null)
   const [tab, setTab] = useState(0)
+  const [q, setQ] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [catFilter, setCatFilter] = useState('all')
+  const [sort, setSort] = useState({ key: 'id', dir: 'desc' })
 
   const refresh = useCallback(async () => {
     try {
@@ -65,17 +69,64 @@ export default function CtfPage() {
   }, [refresh])
 
   const openAuto = () => {
-    if (autosolving) { stopAutosolve().then(refresh); return }
+    if (autosolving) { stopAutosolve().then(refresh).catch((e) => alert('停止失败: ' + e.message)); return }
     setDirs({})
     setAutoOpen(true)
   }
   const doStart = async () => {
     const chosen = DIRS.filter((d) => dirs[d])
-    if (!chosen.length) return
-    await startAutosolve({ directions: chosen, max: maxn, difficulty: diff ? { 简单: 'Easy', 中等: 'Medium', 困难: 'Hard' }[diff] : null })
-    setAutoOpen(false)
-    refresh()
+    if (!chosen.length) { alert('请至少勾选一个方向'); return }
+    try {
+      await startAutosolve({ directions: chosen, max: maxn, difficulty: diff ? { 简单: 'Easy', 中等: 'Medium', 困难: 'Hard' }[diff] : null })
+      setAutoOpen(false)
+      setSort({ key: 'id', dir: 'desc' })  // newest session first
+      await refresh()
+    } catch (e) {
+      alert('启动失败: ' + e.message)
+    }
   }
+
+  const categories = useMemo(
+    () => [...new Set(sessions.map((s) => s.category).filter(Boolean))].sort(),
+    [sessions],
+  )
+
+  const toggleSort = (key) => setSort((cur) => (
+    cur.key === key
+      ? { key, dir: cur.dir === 'asc' ? 'desc' : 'asc' }
+      : { key, dir: key === 'id' || key === 'created' ? 'desc' : 'asc' }
+  ))
+
+  const visible = useMemo(() => {
+    const needle = q.trim().toLowerCase()
+    const created = (s) => {
+      if (s.created_ts) return s.created_ts
+      if (!s.created_at) return 0
+      const t = Date.parse(`${new Date().getFullYear()}-${s.created_at.replace(' ', 'T')}`)
+      return Number.isNaN(t) ? 0 : t
+    }
+    const value = (s) => (
+      sort.key === 'created' ? created(s)
+        : sort.key === 'id' ? s.id
+          : String(s[sort.key] ?? '')
+    )
+    return sessions
+      .filter((s) => {
+        if (statusFilter !== 'all' && s.status !== statusFilter) return false
+        if (catFilter !== 'all' && s.category !== catFilter) return false
+        if (!needle) return true
+        return [s.id, s.title, s.category, s.status]
+          .some((v) => String(v ?? '').toLowerCase().includes(needle))
+      })
+      .sort((a, b) => {
+        const va = value(a)
+        const vb = value(b)
+        const cmp = typeof va === 'number' && typeof vb === 'number'
+          ? va - vb
+          : String(va).localeCompare(String(vb))
+        return sort.dir === 'asc' ? cmp : -cmp
+      })
+  }, [sessions, q, statusFilter, catFilter, sort])
 
   const view = async (id) => { setDetail(await getSession(id)); setTab(0) }
 
@@ -90,24 +141,56 @@ export default function CtfPage() {
         </Button>
         <Button color="error" startIcon={<DeleteSweepIcon />} onClick={() => batchDelete().then(refresh)}>批量删除失败</Button>
         <Typography variant="body2" color="text.secondary">
-          {sessions.length} 个 session{slotText ? ` · ${slotText}` : ''}
+          显示 {visible.length} / {sessions.length} 个 session{slotText ? ` · ${slotText}` : ''}
         </Typography>
+      </Stack>
+
+      <Stack direction="row" spacing={1} sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
+        <TextField size="small" label="搜索题目 / 编号 / 大类" value={q}
+          onChange={(e) => setQ(e.target.value)} sx={{ minWidth: 240 }} />
+        <TextField select size="small" label="状态" value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)} sx={{ minWidth: 140 }}>
+          <MenuItem value="all">全部状态</MenuItem>
+          {Object.entries(STATUS).map(([key, st]) => (
+            <MenuItem key={key} value={key}>{st.label}（{key}）</MenuItem>
+          ))}
+        </TextField>
+        <TextField select size="small" label="大类" value={catFilter}
+          onChange={(e) => setCatFilter(e.target.value)} sx={{ minWidth: 140 }}>
+          <MenuItem value="all">全部大类</MenuItem>
+          {categories.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+        </TextField>
+        <Button onClick={() => { setQ(''); setStatusFilter('all'); setCatFilter('all') }}>
+          重置筛选
+        </Button>
       </Stack>
 
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell width={60}>编号</TableCell>
-              <TableCell width={80}>大类</TableCell>
-              <TableCell>题目名称</TableCell>
-              <TableCell width={80}>状态</TableCell>
-              <TableCell width={110}>创建时间</TableCell>
+              {[
+                ['id', '编号', 70],
+                ['category', '大类', 90],
+                ['title', '题目名称', null],
+                ['status', '状态', 90],
+                ['created', '创建时间', 120],
+              ].map(([key, label, width]) => (
+                <TableCell key={key} width={width || undefined} sortDirection={sort.key === key ? sort.dir : false}>
+                  <TableSortLabel
+                    active={sort.key === key}
+                    direction={sort.key === key ? sort.dir : 'asc'}
+                    onClick={() => toggleSort(key)}
+                  >
+                    {label}
+                  </TableSortLabel>
+                </TableCell>
+              ))}
               <TableCell width={220}>操作</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {sessions.map((s) => {
+            {visible.map((s) => {
               const st = STATUS[s.status] || { label: s.status, color: 'default' }
               return (
                 <TableRow key={s.id} hover>
