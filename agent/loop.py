@@ -129,6 +129,8 @@ def run_loop(
     flag_hint_sent = False
     invalid_streak = 0
     invalid_total = 0
+    seen_flags: set[str] = set()
+    flag_verify_nudged = False
     for _ in range(max_turns):
         # Fold in any supervisor guidance before the model's next turn.
         if guidance and (note := guidance()):
@@ -147,7 +149,28 @@ def run_loop(
         if not message.tool_calls:
             messages.append(assistant)
             text = message.content or ""
-            has_flag = bool(text.strip()) and bool(extract_flags(text, flag_pattern))
+            found = extract_flags(text, flag_pattern)
+            has_flag = bool(text.strip()) and bool(found)
+            # A reported flag that never appeared verbatim in a tool result was probably
+            # retyped from memory (observed: one wrong hex char). Ask for verification once
+            # before accepting the conclusion; repeating it then ends normally.
+            unseen = [f for f in found if f not in seen_flags]
+            if has_flag and unseen and not flag_verify_nudged:
+                flag_verify_nudged = True
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        f"The flag(s) {', '.join(unseen)} do not appear verbatim in any tool "
+                        "output. Verify the exact characters against the source before "
+                        "concluding: re-read the tool result, or re-decode/convert it in "
+                        "run_python, and copy the string exactly instead of retyping it. If you "
+                        "are certain it was assembled from several outputs, restate it and stop."
+                    ),
+                })
+                print("[nudge] reported flag not seen in tool output — verify it", flush=True)
+                emit({"type": "guidance",
+                      "text": "(auto) reported flag not seen in tool output — verify it"})
+                continue
             # A text conclusion ends the loop when it has the flag, or when persistence is
             # off (so the model may legitimately answer "couldn't solve"). In persist mode,
             # text without a flag is treated as a premature stop and nudged to continue.
@@ -242,9 +265,10 @@ def run_loop(
             last_output[key] = " ".join(str(output).split())
             emit({"type": "tool_result", "name": call.function.name, "output": output})
             messages.append({"role": "tool", "tool_call_id": call.id, "content": output})
-            if found_in_output is None and not flag_hint_sent:
-                matches = extract_flags(str(output), flag_pattern)
-                if matches:
+            matches = extract_flags(str(output), flag_pattern)
+            if matches:
+                seen_flags.update(matches)
+                if found_in_output is None and not flag_hint_sent:
                     found_in_output = matches[-1]
         # Two bad argument blobs in a row usually means the model is imitating its own
         # malformed output. Stop the spiral before it grows (and before it fills the context).
