@@ -70,6 +70,8 @@
     <nav>
       <a href="#" class="active" id="navCtf" onclick="showView('ctf');return false">CTF 打题</a>
       <a href="#" id="navMem" onclick="showView('mem');return false">通话池</a>
+      <a href="#" id="navManual" onclick="showView('manual');return false">手动解题</a>
+      <a href="#" id="navConfig" onclick="showView('config');return false">配置管理</a>
     </nav>
   </aside>
   <main>
@@ -94,6 +96,40 @@
         <span id="memCount" class="muted"></span>
       </div>
       <div id="memList"></div>
+    </section>
+    <section id="manualView" style="display:none">
+      <div style="background:var(--panel);border-radius:10px;padding:20px 24px;max-width:640px">
+        <h2>手动解题</h2>
+        <div class="field">
+          <label>方向</label>
+          <select id="manDir"><option value="web">web</option><option value="crypto">crypto</option><option value="forensics">forensics</option></select>
+        </div>
+        <div class="field">
+          <label>目标 URL（web 必填，每行一个）</label>
+          <input id="manUrls" placeholder="https://target/…">
+        </div>
+        <div class="field">
+          <label>题目描述 / 提示</label>
+          <input id="manDesc" placeholder="description">
+        </div>
+        <div class="field">
+          <label>max turns</label>
+          <input id="manTurns" type="number" value="100">
+        </div>
+        <div class="field">
+          <label>flag prefix</label>
+          <input id="manPrefix" value="flag">
+        </div>
+        <button id="manStart">开始 ▶</button>
+      </div>
+    </section>
+    <section id="configView" style="display:none">
+      <div style="background:var(--panel);border-radius:10px;padding:20px 24px;max-width:640px">
+        <h2>配置管理</h2>
+        <pre id="configBody"></pre>
+        <button id="clearFailed" class="danger">清空失败黑名单</button>
+        <p class="muted">配置通过 .env 修改，重启服务生效。</p>
+      </div>
     </section>
   </main>
 </div>

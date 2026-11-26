@@ -117,6 +117,47 @@ class Controller:
         threading.Thread(target=self._retry_worker, args=(s,), daemon=True).start()
         return True
 
+    def manual_solve(self, spec: dict, title: str) -> int:
+        session = self.manager.new_session(spec, title, spec.get("category", "web"))
+        self._bump()
+        return session.id
+
+    def config(self) -> dict:
+        import core.config as cfg
+        from core.platform import list_tokens
+        key = "未设置"
+        if cfg.API_KEY:
+            key = f"sk-…{cfg.API_KEY[-4:]}"
+        return {
+            "model": cfg.DEFAULT_MODEL,
+            "api_base": cfg.API_BASE,
+            "api_key": key,
+            "api_timeout": cfg.API_TIMEOUT,
+            "tokens": len(list_tokens()),
+            "failed_count": len(self.manager.failed_ids()),
+            "memory_count": len(self.manager.list_memories()),
+        }
+
+    def clear_failed(self) -> int:
+        n = len(self.manager.failed_ids())
+        self.manager.clear_failed()
+        self._bump()
+        return n
+
+    def autosolve_slots(self) -> list[dict]:
+        """Describe the active autosolve slots for the multi-agent view."""
+        out = []
+        for s in self._auto_slots:
+            out.append({
+                "direction": s["direction"],
+                "token_index": s["token_index"],
+                "running": s["running"],
+                "phase": s["phase"],
+                "done": s["done"],
+                "current_title": s["current"].title if s["current"] else None,
+            })
+        return out
+
     # ---- driving loop (call periodically) ---------------------------------
     def step(self) -> None:
         try:

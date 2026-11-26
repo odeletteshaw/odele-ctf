@@ -152,6 +152,30 @@ def search_memories(q: str = ""):
     return manager.search_memories(q)
 
 
+@app.get("/api/config")
+def config():
+    return controller.config()
+
+
+@app.post("/api/config/clear_failed")
+def clear_failed():
+    n = controller.clear_failed()
+    return {"cleared": n}
+
+
+@app.post("/api/manual")
+def manual_solve(body: dict):
+    spec = body.get("spec") or {}
+    title = str(body.get("title") or spec.get("category") or "manual")
+    session_id = controller.manual_solve(spec, title)
+    return {"id": session_id}
+
+
+@app.get("/api/autosolve/slots")
+def autosolve_slots():
+    return controller.autosolve_slots()
+
+
 # ---- WebSocket ------------------------------------------------------------
 @app.websocket("/ws")
 async def ws(websocket: WebSocket):

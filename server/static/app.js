@@ -52,6 +52,18 @@ async function refresh() {
   const st = await api("/api/status");
   autosolving = st.is_autosolving;
   render();
+  loadSlots();
+}
+
+async function loadSlots() {
+  try {
+    const slots = await api("/api/autosolve/slots");
+    if (slots.length) {
+      const parts = slots.map((s) =>
+        `${s.direction}·t${s.token_index} ${s.running ? s.phase + (s.current_title ? ":" + s.current_title : "") : "停"}`);
+      $("status").textContent = `${sessions.length} 个 session · ${parts.join(" | ")}`;
+    }
+  } catch (e) {}
 }
 
 // ---- autosolve -----------------------------------------------------------
@@ -146,9 +158,14 @@ setInterval(refresh, 5000);
 function showView(name) {
   $("ctfView").style.display = name === "ctf" ? "block" : "none";
   $("memView").style.display = name === "mem" ? "block" : "none";
+  $("manualView").style.display = name === "manual" ? "block" : "none";
+  $("configView").style.display = name === "config" ? "block" : "none";
   $("navCtf").classList.toggle("active", name === "ctf");
   $("navMem").classList.toggle("active", name === "mem");
+  $("navManual").classList.toggle("active", name === "manual");
+  $("navConfig").classList.toggle("active", name === "config");
   if (name === "mem") loadMemories("");
+  if (name === "config") loadConfig();
 }
 
 async function loadMemories(q) {
@@ -169,3 +186,43 @@ async function loadMemories(q) {
 
 $("memSearchBtn").addEventListener("click", () => loadMemories($("memSearch").value.trim()));
 $("memSearch").addEventListener("keydown", (e) => { if (e.key === "Enter") loadMemories($("memSearch").value.trim()); });
+
+// ---- manual solve --------------------------------------------------------
+async function startManual() {
+  const direction = $("manDir").value;
+  const urls = $("manUrls").value.split("\n").map((s) => s.trim()).filter(Boolean);
+  if (direction === "web" && !urls.length) { alert("web 至少填一个 URL"); return; }
+  const spec = {
+    kind: "custom", category: direction,
+    urls: direction === "web" ? urls : [],
+    description: $("manDesc").value.trim(),
+    flag_prefix: $("manPrefix").value.trim() || "flag",
+    attachments: [],
+    max_turns: parseInt($("manTurns").value || "100", 10),
+  };
+  const title = urls[0] ? urls[0].split("/")[2] : direction;
+  await api("/api/manual", { method: "POST", body: JSON.stringify({ spec, title }) });
+  showView("ctf"); refresh();
+}
+
+// ---- config --------------------------------------------------------------
+async function loadConfig() {
+  const c = await api("/api/config");
+  $("configBody").textContent =
+    `模型:        ${c.model}\n` +
+    `API Base:    ${c.api_base}\n` +
+    `API Key:     ${c.api_key}\n` +
+    `API 超时:    ${c.api_timeout}s\n` +
+    `Agent token: ${c.tokens} 个\n` +
+    `失败黑名单:  ${c.failed_count} 道\n` +
+    `记忆池:      ${c.memory_count} 条`;
+}
+async function clearFailed() {
+  if (!confirm("清空失败黑名单？")) return;
+  const r = await api("/api/config/clear_failed", { method: "POST" });
+  alert(`清除了 ${r.cleared} 条`);
+  loadConfig();
+}
+
+$("manStart").addEventListener("click", startManual);
+$("clearFailed").addEventListener("click", clearFailed);
