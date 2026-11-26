@@ -46,6 +46,17 @@ def format_response(response: httpx.Response) -> str:
     return f"HTTP {response.status_code}\n{headers}\n\n{body}"
 
 
+def _request_key(args: dict[str, Any]) -> list[Any]:
+    """Repeat fingerprint: same verb/path/body is the same request, even if headers
+    (a Cookie, a regenerated token) differ."""
+    return [str(args.get("method", "GET")).upper(), str(args.get("path", "/")),
+            str(args.get("body") or "")]
+
+
+def _batch_key(args: dict[str, Any]) -> list[Any]:
+    return [_request_key(r) for r in args.get("requests", []) if isinstance(r, dict)]
+
+
 def run_http(target: str, client: httpx.Client, args: dict[str, Any]) -> str:
     try:
         url = build_url(target, args["path"])
@@ -66,6 +77,7 @@ def http_tool(target: str, client: httpx.Client) -> Tool:
         description="Send an HTTP request to the challenge target. Redirects are returned, not followed.",
         parameters=HTTP_PARAMETERS,
         handler=lambda args: run_http(target, client, args),
+        repeat_key=_request_key,
     )
 
 
@@ -101,6 +113,7 @@ def multi_http_tool(targets: list[str], client: httpx.Client) -> Tool:
         ),
         parameters=params,
         handler=handler,
+        repeat_key=_request_key,
     )
 
 
@@ -155,6 +168,7 @@ def download_tool(targets: list[str], client: httpx.Client, workdir: Path | None
             "required": ["path"],
         },
         handler=handler,
+        repeat_key=lambda args: [str(args.get("target", 0)), str(args.get("path", "/"))],
     )
 
 
@@ -204,6 +218,7 @@ def http_batch_tool(target: str, client: httpx.Client) -> Tool:
             "required": ["requests"],
         },
         handler=lambda args: _run_batch(target, client, args.get("requests", [])),
+        repeat_key=_batch_key,
     )
 
 
@@ -242,6 +257,7 @@ def multi_http_batch_tool(targets: list[str], client: httpx.Client) -> Tool:
             "required": ["requests"],
         },
         handler=handler,
+        repeat_key=_batch_key,
     )
 
 

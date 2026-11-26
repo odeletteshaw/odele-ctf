@@ -41,12 +41,14 @@ def _benchmark(category: str, name: str) -> Built:
     if category == "web":
         server, url = challenge.start(flag)
         client = agent.new_http_client()
-        tools = agent.web_tools(url, client)
+        workdir = Path(tempfile.mkdtemp(prefix="ctf-web-"))
+        tools = agent.web_tools(url, client, workdir)
         user = f"Target: {url}\n\nChallenge description: {challenge.DESCRIPTION}"
 
         def cleanup() -> None:
             server.shutdown()
             client.close()
+            shutil.rmtree(workdir, ignore_errors=True)
 
         return flag, tools, agent.SYSTEM_PROMPT, user, cleanup
     if category in ("crypto", "misc", "forensics"):  # text-in, run_python-only categories

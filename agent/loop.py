@@ -45,12 +45,18 @@ def extract_flags(text: str, pattern: "re.Pattern[str] | None" = None) -> list[s
 @dataclass
 class Tool:
     """One capability the model may call. The handler takes parsed JSON args and
-    returns the text the model sees back."""
+    returns the text the model sees back.
+
+    `repeat_key` (optional) maps args to a JSON-able fingerprint used by the loop's
+    repeated-call detector. Give it to tools where two calls can be "the same request"
+    without identical JSON — e.g. an HTTP tool keyed on method+path+body, so retrying
+    the same endpoint with a changing Cookie header still counts as a repeat."""
 
     name: str
     description: str
     parameters: dict[str, Any]
     handler: Callable[[dict[str, Any]], str]
+    repeat_key: Callable[[dict[str, Any]], Any] | None = None
 
     def schema(self) -> dict[str, Any]:
         return {
@@ -99,6 +105,7 @@ def run_loop(
             on_event(event)
 
     handlers = {tool.name: tool.handler for tool in tools}
+    repeat_key_fns = {tool.name: tool.repeat_key for tool in tools}
     schemas = [tool.schema() for tool in tools]
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system},
@@ -163,16 +170,25 @@ def run_loop(
             tool_calls += 1
             raw_args = call.function.arguments or ""
             try:
-                canon = json.dumps(json.loads(raw_args or "{}"), sort_keys=True)
+                args = json.loads(raw_args or "{}")
+                canon = json.dumps(args, sort_keys=True)
             except (json.JSONDecodeError, TypeError):
+                args = None
                 canon = raw_args
+            # Fingerprint the call for the repeat detector: a tool may collapse
+            # cosmetic differences (e.g. a changing header) onto the same key.
             key = (call.function.name, canon)
+            fingerprint = repeat_key_fns.get(call.function.name)
+            if isinstance(args, dict) and fingerprint is not None:
+                try:
+                    key = (call.function.name,
+                           json.dumps(fingerprint(args), sort_keys=True, default=str))
+                except Exception:
+                    pass
             repeat_counts[key] = repeat_counts.get(key, 0) + 1
             seen_this_turn.append(key)
-            try:
-                args = json.loads(raw_args or "{}")
-            except json.JSONDecodeError as error:
-                output = f"Error: arguments were not valid JSON: {error}"
+            if args is None:
+                output = f"Error: arguments were not valid JSON: {raw_args}"
             else:
                 print(f"[{call.function.name}] {args}", flush=True)
                 emit({"type": "tool_call", "name": call.function.name, "args": args})
@@ -187,9 +203,10 @@ def run_loop(
             if repeat_counts[key] >= 2 and key not in nudged_repeats:
                 nudged_repeats.add(key)
                 nudge = (
-                    "You are repeating the exact same tool call you already made. Stop and "
-                    "review your earlier findings for anything you missed, then try a "
-                    "DIFFERENT approach — do not repeat a technique that already failed."
+                    "You are repeating a tool call you already made — the same request with "
+                    "the same effect. Stop and review your earlier findings for anything you "
+                    "missed, re-check your assumptions/payload, then take a DIFFERENT step — do "
+                    "not repeat a technique that already failed."
                 )
                 if diagnostic:
                     nudge += "\n\nDiagnostic checklist:\n" + diagnostic

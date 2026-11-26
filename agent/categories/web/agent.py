@@ -6,7 +6,9 @@ Usage: python agent/categories/web/agent.py http://127.0.0.1:8000 "description o
 """
 
 import argparse
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 import httpx
@@ -28,7 +30,7 @@ from agent.tools.phar import phar_tool  # noqa: E402
 from agent.tools.sandbox import python_tool  # noqa: E402
 
 SYSTEM_PROMPT = """You are an expert web penetration tester solving a CTF challenge.
-You have five tools:
+You have six tools:
 - http_request: send ONE HTTP request to the challenge target and read the full response.
 - http_batch: send up to 60 HTTP requests in one call (one compact line each) to fuzz or
   brute-force many candidate paths/params at once; follow up on hits with http_request.
@@ -39,6 +41,8 @@ You have five tools:
   HMAC, signing or forging tokens, brute-forcing a weak secret, breaking a cipher. It runs
   in the SAME persistent workspace download_file writes into, so it can read those files
   (os.listdir('.'), open('name','rb'), zipfile.ZipFile('name'), ...).
+- phar_gen: build a PHAR archive whose metadata is a PHP-serialized object (returns base64),
+  for phar:// deserialization. You still design the class/object to embed.
 - search_knowledge: search the technique knowledge base for a specific exploitation
   technique and get its concrete steps (see the index below for what's available). Use it
   the moment you suspect a vulnerability class, before re-deriving the exploit by hand.
@@ -97,7 +101,9 @@ Common vulnerability classes to consider:
 - Auth bypass: decode cookies/tokens (base64, JWT header.payload.signature); if they
   are unsigned or accept alg=none, forge a privileged role and replay the request.
 - Block-cipher modes: AES-ECB encrypts each 16-byte block independently, so blocks are
-  interchangeable. ECB cut-and-paste: (1) craft an input so a chosen value (e.g. "admin")
+  interchangeable. For CBC, plaintext block N is XORed with ciphertext block N-1 (the IV
+  only feeds block 1): work out WHICH plaintext block holds the target field before
+  flipping, or you will flip the IV and see no change. ECB cut-and-paste: (1) craft an input so a chosen value (e.g. "admin")
   sits ALONE in one block followed by a full block of PKCS7 padding — you can embed the
   padding bytes in your input (percent-encode them, e.g. 0x0b), they needn't be printable;
   (2) craft a second input so the field name ends exactly at a block boundary (e.g. "&role="
@@ -128,11 +134,20 @@ DIAGNOSTIC = """When stuck or repeating yourself, run these checks:
   the wrong parameter name — don't jump to "not <vuln class>" before ruling those out.
 - A "bad padding" / length error right after a block-cipher splice almost always means the
   offset arithmetic is off, not the padding bytes: recompute len(prefix) % 16 and print the
-  blocks in run_python before changing the attack."""
+  blocks in run_python before changing the attack.
+- CBC with no visible change: the IV only affects plaintext block 1. If your target is in a
+  later block, flip the byte in the PRECEDING ciphertext block at the matching offset.
+- The same response repeating means the request is the same in the way that matters: change
+  the payload/offset, not the headers or presentation of the identical request."""
 
 
-def web_tools(target: str, client: httpx.Client) -> list[Tool]:
-    return [http_tool(target, client), http_batch_tool(target, client), python_tool(), phar_tool()]
+def web_tools(target: str, client: httpx.Client, workdir: Path | None = None) -> list[Tool]:
+    """Single-target toolset: the same six capabilities as web_tools_multi, so the
+    prompt's tool list is always accurate. With a `workdir`, download_file and
+    run_python share one persistent workspace."""
+    return [http_tool(target, client), http_batch_tool(target, client),
+            download_tool([target], client, workdir), python_tool(workdir), phar_tool(),
+            knowledge_tool("web")]
 
 
 def web_tools_multi(
@@ -152,10 +167,11 @@ def solve_web(
     target: str, description: str, model: str | None = None, max_turns: int = 30,
     on_event=None,
 ) -> SolveResult:
+    workdir = Path(tempfile.mkdtemp(prefix="ctf-web-"))
     client = new_http_client()
     try:
         return solve(
-            web_tools(target, client),
+            web_tools(target, client, workdir),
             SYSTEM_PROMPT,
             f"Target: {target}\n\nChallenge description: {description}",
             model=model,
@@ -164,6 +180,7 @@ def solve_web(
         )
     finally:
         client.close()
+        shutil.rmtree(workdir, ignore_errors=True)
 
 
 def main() -> None:
