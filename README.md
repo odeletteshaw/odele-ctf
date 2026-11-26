@@ -46,11 +46,11 @@ python crypto/test_offline.py
 python reverse/test_offline.py
 ```
 
-图形监督控制台（实时看 agent 解题、可中途给指导）：
+Web 控制台（前后端分离：FastAPI + Web 前端）：
 
 ```bash
-python -m gui.launch               # 空控制台，按 ＋ 加会话
-python -m gui.launch web sqli_login  # 打开即带一个正在跑的会话
+./restart_server.sh                 # 启动服务
+# 浏览器打开 http://127.0.0.1:8765
 ```
 
 切换模型/厂商：环境变量 `CTF_API_BASE` / `CTF_MODEL` / `CTF_API_KEY`（真实环境变量优先于 `.env`）。
@@ -58,14 +58,16 @@ python -m gui.launch web sqli_login  # 打开即带一个正在跑的会话
 ## 目录结构
 
 ```
+backend/    后端编排（框架无关）：manager（持久化+session）、worker（解题子进程）、
+            builder（任务组装）、controller（autosolve / retry / 团队控制循环）
+server/     Web 后端：FastAPI（REST + WebSocket）+ static/（前端静态页）
 core/       跨题型通用底座：config（模型配置）、agent（Tool + run_loop + solve）、
-            sandbox（run_python / run_command 沙箱）、evaluate（benchmark 循环）、offline
+            sandbox（run_python / run_command 沙箱）、evaluate（benchmark 循环）、offline、team
 tools/      agent 工具（「能力」），各题型从同一个菜单组装：
             sandbox.py python_tool · http.py http_tool · process.py process_tool
             chat.py message_tool · bin.py disassemble_tool / run_binary_tool
             oracle.py query_oracle（批量查询交互式 oracle）
 <大类>/     每个题型同构：agent.py（prompt + 工具组装）+ challenges/（一题一文件）+ evaluate.py
-gui/        监督控制台（CustomTkinter，每题一个子进程会话）
 ```
 
 ## 设计原则

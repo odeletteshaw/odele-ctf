@@ -12,7 +12,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.agent import generate_writeup, solve  # noqa: E402
-from gui.builder import build_task  # noqa: E402
+from backend.builder import build_task  # noqa: E402
 
 
 def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any) -> None:

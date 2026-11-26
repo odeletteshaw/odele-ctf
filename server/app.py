@@ -2,7 +2,7 @@
 
 Exposes the session list + autosolve actions as REST, pushes "changed" over
 WebSocket, and serves the static web frontend. The heavy logic lives in
-server/controller.py (which wraps gui.manager.Manager); this file is a thin HTTP
+server/controller.py (which wraps backend.manager.Manager); this file is a thin HTTP
 layer.
 
 Run:  python -m server.app        (or: uvicorn server.app:app --reload)
@@ -19,8 +19,8 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from gui.manager import Manager, Session
-from server.controller import Controller
+from backend.manager import Manager, Session
+from backend.controller import Controller
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = Path(__file__).resolve().parent / "static"

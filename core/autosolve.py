@@ -2,7 +2,7 @@
 
 prepare_challenge() fetches the challenge detail, downloads attachments into a temp dir,
 starts (and waits for) the container environment if the challenge has one, and returns a
-spec that gui.builder.build_task() can run, plus the metadata needed to submit the flag.
+spec that backend.builder.build_task() can run, plus the metadata needed to submit the flag.
 Only the categories our custom solver supports (web / crypto / forensics) are returned;
 anything else yields None so the caller can skip it.
 """

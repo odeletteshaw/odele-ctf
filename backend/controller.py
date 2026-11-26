@@ -10,7 +10,7 @@ import threading
 import time
 from typing import Any, Callable
 
-from gui.manager import Manager, Session
+from backend.manager import Manager, Session
 
 FAILED_STATUSES = ("done", "failed", "error", "cancelled")
 

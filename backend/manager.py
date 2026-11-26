@@ -18,7 +18,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from gui.worker import worker_main  # noqa: E402
+from backend.worker import worker_main  # noqa: E402
 
 # spawn is the safe start method on macOS (fork + threads is unsafe there).
 _CTX = mp.get_context("spawn")
