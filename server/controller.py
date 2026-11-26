@@ -218,6 +218,8 @@ class Controller:
                 continue
             self._retry_submits.pop(sid, None)
             flag = session.state.get("flag")
+            if flag:
+                self._remember(session)
             threading.Thread(target=self._finalize_retry, args=(meta, flag), daemon=True).start()
 
     def _finalize_retry(self, meta: dict, flag: str | None) -> None:
@@ -393,6 +395,7 @@ class Controller:
                 pass
         if flag and solved:
             slot["done"] += 1
+            self._remember(session)
         else:
             cid = str(meta["challenge_id"])
             slot.setdefault("failed", set()).add(cid)
@@ -409,6 +412,18 @@ class Controller:
             return bool(ch.get("is_solved"))
         except Exception:
             return False
+
+    def _remember(self, session: Session) -> None:
+        """Record a solved challenge in the memory pool so future challenges can reuse it."""
+        writeup = (session.state.get("writeup") or "").strip()
+        title = (session.title or "").strip()
+        if not writeup and not title:
+            return
+        content = f"题目: {title}\n方向: {session.category}\n\n{writeup}".strip()
+        try:
+            self.manager.add_memory(session.category, title, content, "solve")
+        except Exception as e:
+            print(f"[memory] {e}")
 
     def _stop_slot(self, slot: dict, msg: str) -> None:
         slot["running"] = False

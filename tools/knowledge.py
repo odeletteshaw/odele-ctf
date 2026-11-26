@@ -6,7 +6,7 @@ specific technique.
 """
 
 from core.agent import Tool
-from knowledge import search_techniques
+from knowledge import search_memories, search_techniques
 
 
 def knowledge_tool(category: str) -> Tool:
@@ -14,19 +14,25 @@ def knowledge_tool(category: str) -> Tool:
         query = str(args.get("query", "")).strip()
         if not query:
             return "Error: 'query' is required"
-        results = search_techniques(category, query)
-        if not results:
-            return f"No technique matches {query!r}. Try fewer / more general keywords."
-        parts = [r[:3500] for r in results[:2]]
+        parts: list[str] = []
+        # 1) static technique cards for this category
+        for r in search_techniques(category, query)[:2]:
+            parts.append(r[:3500])
+        # 2) accumulated memory pool (past solves, auto-saved)
+        for m in search_memories(query, limit=3):
+            content = (m.get("content") or "").strip()
+            parts.append(f"[记忆 · {m.get('category')}] {m.get('title')}\n{content[:3000]}")
+        if not parts:
+            return f"No technique or past solve matches {query!r}. Try fewer / more general keywords."
         return "\n" + "\n\n---\n\n".join(parts) + "\n"
 
     return Tool(
         name="search_knowledge",
         description=(
-            "Search the CTF technique knowledge base by keyword and return the full writeup "
-            "of matching techniques (SQLi, deserialization, header forgery, SSRF, ...). Use it "
-            "when you've identified a vulnerability class and need the concrete exploitation "
-            "steps, instead of re-deriving them from scratch."
+            "Search the technique knowledge base (static cards + past-solve memory pool) by "
+            "keyword and return the full writeups. Use it when you've identified a "
+            "vulnerability class and need concrete exploitation steps — or to recall how a "
+            "similar challenge was solved before."
         ),
         parameters={
             "type": "object",

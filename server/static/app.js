@@ -141,3 +141,31 @@ function connectWs() {
 }
 connectWs();
 setInterval(refresh, 5000);
+
+// ---- memory pool (通话池) ------------------------------------------------
+function showView(name) {
+  $("ctfView").style.display = name === "ctf" ? "block" : "none";
+  $("memView").style.display = name === "mem" ? "block" : "none";
+  $("navCtf").classList.toggle("active", name === "ctf");
+  $("navMem").classList.toggle("active", name === "mem");
+  if (name === "mem") loadMemories("");
+}
+
+async function loadMemories(q) {
+  let url = "/api/memories";
+  if (q) url = `/api/memories/search?q=${encodeURIComponent(q)}`;
+  const mems = await api(url);
+  $("memCount").textContent = `${mems.length} 条记忆`;
+  $("memList").innerHTML = mems.map((m) => `
+    <div style="background:var(--panel);border-radius:8px;padding:14px 16px;margin-bottom:10px">
+      <div style="margin-bottom:6px">
+        <strong>${m.title || ""}</strong>
+        <span class="muted" style="margin-left:8px">${m.category || ""}</span>
+        <span class="muted" style="margin-left:8px;font-size:12px">${m.source || ""}</span>
+      </div>
+      <pre style="margin:0;max-height:260px;overflow:auto">${m.content || ""}</pre>
+    </div>`).join("");
+}
+
+$("memSearchBtn").addEventListener("click", () => loadMemories($("memSearch").value.trim()));
+$("memSearch").addEventListener("keydown", (e) => { if (e.key === "Enter") loadMemories($("memSearch").value.trim()); });

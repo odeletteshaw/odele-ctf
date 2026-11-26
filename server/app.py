@@ -142,6 +142,16 @@ def batch_delete():
     return {"deleted": n}
 
 
+@app.get("/api/memories")
+def list_memories():
+    return manager.list_memories()
+
+
+@app.get("/api/memories/search")
+def search_memories(q: str = ""):
+    return manager.search_memories(q)
+
+
 # ---- WebSocket ------------------------------------------------------------
 @app.websocket("/ws")
 async def ws(websocket: WebSocket):

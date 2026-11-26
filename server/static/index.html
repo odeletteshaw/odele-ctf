@@ -68,22 +68,33 @@
     <div class="brand">Odele</div>
     <div class="ver">v0.4.0 · web</div>
     <nav>
-      <a href="#" class="active">CTF 打题</a>
+      <a href="#" class="active" id="navCtf" onclick="showView('ctf');return false">CTF 打题</a>
+      <a href="#" id="navMem" onclick="showView('mem');return false">通话池</a>
     </nav>
   </aside>
   <main>
-    <div class="toolbar">
-      <button id="btnAuto">▶ 开始打题</button>
-      <button id="btnBatchDelete" class="danger">批量删除失败</button>
-      <span id="status" class="muted"></span>
-    </div>
-    <table>
-      <thead>
-        <tr><th style="width:56px">编号</th><th style="width:80px">大类</th><th>题目名称</th>
-            <th style="width:80px">状态</th><th style="width:110px">创建时间</th><th style="width:220px">操作</th></tr>
-      </thead>
-      <tbody id="tbody"></tbody>
-    </table>
+    <section id="ctfView">
+      <div class="toolbar">
+        <button id="btnAuto">▶ 开始打题</button>
+        <button id="btnBatchDelete" class="danger">批量删除失败</button>
+        <span id="status" class="muted"></span>
+      </div>
+      <table>
+        <thead>
+          <tr><th style="width:56px">编号</th><th style="width:80px">大类</th><th>题目名称</th>
+              <th style="width:80px">状态</th><th style="width:110px">创建时间</th><th style="width:220px">操作</th></tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </section>
+    <section id="memView" style="display:none">
+      <div class="toolbar">
+        <input id="memSearch" placeholder="搜索记忆池…" style="flex:1">
+        <button id="memSearchBtn">搜索</button>
+        <span id="memCount" class="muted"></span>
+      </div>
+      <div id="memList"></div>
+    </section>
   </main>
 </div>
 

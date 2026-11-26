@@ -47,3 +47,30 @@ def search_techniques(category: str, query: str) -> list[str]:
     if not q:
         return []
     return [text for text in _cards(category) if q in text.lower()]
+
+
+def search_memories(query: str, limit: int = 5) -> list[dict]:
+    """Search the accumulated memory pool (auto-saved solve writeups) by keyword."""
+    q = query.lower().strip()
+    if not q:
+        return []
+    db = Path.home() / ".odele-ctf" / "sessions.db"
+    if not db.exists():
+        return []
+    import sqlite3
+    try:
+        conn = sqlite3.connect(str(db))
+        rows = conn.execute(
+            "SELECT category, title, content, source, created_at FROM memories "
+            "WHERE lower(title || ' ' || content) LIKE ? ORDER BY id DESC LIMIT ?",
+            (f"%{q}%", limit),
+        ).fetchall()
+    except Exception:
+        return []
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return [{"category": r[0], "title": r[1], "content": r[2],
+             "source": r[3], "created_at": r[4]} for r in rows]

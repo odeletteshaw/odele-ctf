@@ -46,6 +46,15 @@ CREATE TABLE IF NOT EXISTS failed_challenges (
     direction TEXT,
     ts REAL
 );
+CREATE TABLE IF NOT EXISTS memories (
+    id INTEGER PRIMARY KEY,
+    category TEXT,
+    title TEXT,
+    content TEXT,
+    source TEXT,
+    created_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_memories_category ON memories(category);
 """
 
 
@@ -376,6 +385,36 @@ class Manager:
     def clear_failed(self) -> None:
         self._db.execute("DELETE FROM failed_challenges")
         self._db.commit()
+
+    def add_memory(self, category: str, title: str, content: str,
+                   source: str = "solve") -> None:
+        """Append a retrievable memory (a solved challenge's writeup, a failure note, ...)."""
+        self._db.execute(
+            "INSERT INTO memories (category, title, content, source, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (category, title, content, source, time.time()),
+        )
+        self._db.commit()
+
+    def list_memories(self, limit: int = 200) -> list[dict[str, Any]]:
+        rows = self._db.execute(
+            "SELECT id, category, title, content, source, created_at "
+            "FROM memories ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [{"id": r[0], "category": r[1], "title": r[2], "content": r[3],
+                 "source": r[4], "created_at": r[5]} for r in rows]
+
+    def search_memories(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        q = query.lower().strip()
+        if not q:
+            return []
+        rows = self._db.execute(
+            "SELECT id, category, title, content, source, created_at "
+            "FROM memories WHERE lower(title || ' ' || content) LIKE ? "
+            "ORDER BY id DESC LIMIT ?", (f"%{q}%", limit)
+        ).fetchall()
+        return [{"id": r[0], "category": r[1], "title": r[2], "content": r[3],
+                 "source": r[4], "created_at": r[5]} for r in rows]
 
     def drain_all(self) -> None:
         for session in self.sessions:
