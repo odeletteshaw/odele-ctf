@@ -108,7 +108,9 @@ Common vulnerability classes to consider:
 - Block-cipher modes: AES-ECB encrypts each 16-byte block independently, so blocks are
   interchangeable. For CBC, plaintext block N is XORed with ciphertext block N-1 (the IV
   only feeds block 1): work out WHICH plaintext block holds the target field before
-  flipping, or you will flip the IV and see no change. ECB cut-and-paste: (1) craft an input so a chosen value (e.g. "admin")
+  flipping, or you will flip the IV and see no change. If you can decrypt locally before
+  sending, check the target field in the result — still the old value means you flipped the
+  wrong block (move one ciphertext block earlier). ECB cut-and-paste: (1) craft an input so a chosen value (e.g. "admin")
   sits ALONE in one block followed by a full block of PKCS7 padding — you can embed the
   padding bytes in your input (percent-encode them, e.g. 0x0b), they needn't be printable;
   (2) craft a second input so the field name ends exactly at a block boundary (e.g. "&role="
