@@ -67,9 +67,6 @@ function MessageBubble({ m, onReply }) {
           )}
           {m.kind === 'plan' && <Chip size="small" variant="outlined" label="计划" sx={{ height: 18 }} />}
           {m.kind === 'result' && <Chip size="small" variant="outlined" label="结果" sx={{ height: 18 }} />}
-          {m.node && m.node !== 'plan' ? (
-            <Typography variant="caption" color="text.secondary">节点 {m.node}</Typography>
-          ) : null}
         </Stack>
         <Box sx={{
           px: 1.5, py: 1, borderRadius: 2,
@@ -176,14 +173,14 @@ export default function SessionPage() {
                 <Button color="error" size="small" variant="outlined" onClick={() => approve(a.node, false)}>驳回</Button>
               </Stack>
             }>
-            <Typography variant="subtitle2">{a.role} 请求审批 · 节点 {a.node}</Typography>
+            <Typography variant="subtitle2">{a.role} 请求审批</Typography>
             <Typography variant="body2">{a.task || '（无任务说明）'}</Typography>
           </Alert>
         ))}
         {pendingMentions.map((m) => (
           <Alert key={m.node} severity="info" sx={{ mt: 1.5 }}
             action={<Button size="small" onClick={() => setTab(0)}>去回复</Button>}>
-            <Typography variant="subtitle2">{m.from} @ 你 · 节点 {m.node}</Typography>
+            <Typography variant="subtitle2">{m.from} @ 你</Typography>
             <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{m.text}</Typography>
           </Alert>
         ))}
@@ -214,7 +211,7 @@ export default function SessionPage() {
               ))}
               {pendingMentions.map((m) => (
                 <Alert key={m.node} severity="warning">
-                  <Typography variant="subtitle2">{m.from} @ 你 · 节点 {m.node}</Typography>
+                  <Typography variant="subtitle2">{m.from} @ 你</Typography>
                   <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{m.text}</Typography>
                 </Alert>
               ))}
