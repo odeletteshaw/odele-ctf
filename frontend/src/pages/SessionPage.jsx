@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Paper, Typography, Box, Stack, Chip, Button, IconButton, Tooltip, Alert,
-  Tabs, Tab, Divider, TextField,
+  Tabs, Tab, Divider, TextField, Avatar,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import SendIcon from '@mui/icons-material/Send'
@@ -19,6 +19,77 @@ const STATUS = {
   error: { label: '错误', color: 'error' },
   cancelled: { label: '已停止', color: 'warning' },
   idle: { label: '待命', color: 'default' },
+}
+
+const AVATAR_COLORS = ['#4caf8f', '#5c8df6', '#c17bf0', '#e0a458',
+  '#e06c75', '#56b6c2', '#a3be8c', '#d08770']
+
+function colorFor(name = '') {
+  let hash = 0
+  for (const ch of name) hash = (hash * 31 + (ch.codePointAt(0) || 0)) >>> 0
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length]
+}
+
+function RoleAvatar({ name, size = 30 }) {
+  return (
+    <Avatar sx={{
+      width: size, height: size, bgcolor: colorFor(name),
+      color: '#0f1218', fontSize: 13, fontWeight: 700, flexShrink: 0,
+    }}>
+      {(name || '?').slice(0, 1)}
+    </Avatar>
+  )
+}
+
+function MessageBubble({ m, onReply }) {
+  const mine = m.from === '你'
+  const targeted = m.to && m.to !== '团队' && m.to !== '你'
+  return (
+    <Stack direction={mine ? 'row-reverse' : 'row'} spacing={1} alignItems="flex-start">
+      <RoleAvatar name={m.from} />
+      <Box sx={{ maxWidth: '82%' }}>
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 0.35 }}
+          justifyContent={mine ? 'flex-end' : 'flex-start'} flexWrap="wrap" useFlexGap>
+          <Typography variant="caption" sx={{ fontWeight: 600 }}>{m.from || '系统'}</Typography>
+          {targeted ? (
+            <Chip
+              size="small"
+              label={`@${m.to}`}
+              onClick={onReply ? () => onReply(m.to) : undefined}
+              sx={{
+                height: 20, fontWeight: 700, color: '#0f1218',
+                bgcolor: colorFor(m.to),
+                '& .MuiChip-label': { px: 0.75 },
+              }}
+            />
+          ) : (
+            <Typography variant="caption" color="text.secondary">→ {m.to || '团队'}</Typography>
+          )}
+          {m.kind === 'plan' && <Chip size="small" variant="outlined" label="计划" sx={{ height: 18 }} />}
+          {m.kind === 'result' && <Chip size="small" variant="outlined" label="结果" sx={{ height: 18 }} />}
+          {m.node && m.node !== 'plan' ? (
+            <Typography variant="caption" color="text.secondary">节点 {m.node}</Typography>
+          ) : null}
+        </Stack>
+        <Box sx={{
+          px: 1.5, py: 1, borderRadius: 2,
+          bgcolor: targeted ? 'rgba(76,175,143,0.12)' : mine ? 'primary.dark' : 'background.paper',
+          border: '1px solid',
+          borderColor: targeted ? colorFor(m.to) : 'divider',
+          boxShadow: targeted ? `inset 3px 0 0 ${colorFor(m.to)}` : 'none',
+        }}>
+          {targeted && (
+            <Typography variant="caption" sx={{ display: 'block', mb: 0.35, color: colorFor(m.to), fontWeight: 600 }}>
+              任务分派给 {m.to}
+            </Typography>
+          )}
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {m.text}
+          </Typography>
+        </Box>
+      </Box>
+    </Stack>
+  )
 }
 
 export default function SessionPage() {
@@ -136,30 +207,11 @@ export default function SessionPage() {
           '& th, & td': { border: '1px solid', borderColor: 'divider', px: 1, py: 0.5 },
         }}>
           {tab === 0 && (
-            <Stack spacing={1}>
-              {(session.messages || []).map((m, i) => {
-                const mine = m.from === '你'
-                return (
-                  <Box key={i} sx={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-                    <Box sx={{
-                      maxWidth: '85%', px: 1.25, py: 0.75, borderRadius: 2,
-                      bgcolor: mine ? 'primary.dark' : 'background.paper',
-                      border: mine ? 'none' : '1px solid', borderColor: 'divider',
-                    }}>
-                      <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 0.25 }}>
-                        <Typography variant="caption" sx={{ fontWeight: 600 }}>{m.from || '系统'}</Typography>
-                        <Typography variant="caption" color="text.secondary">→ {m.to || '团队'}</Typography>
-                        {m.node && m.node !== 'plan' && (
-                          <Typography variant="caption" color="text.secondary">节点 {m.node}</Typography>
-                        )}
-                      </Stack>
-                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                        {m.text}
-                      </Typography>
-                    </Box>
-                  </Box>
-                )
-              })}
+            <Stack spacing={1.5}>
+              {(session.messages || []).map((m, i) => (
+                <MessageBubble key={i} m={m}
+                  onReply={(name) => setText(`@${name} `)} />
+              ))}
               {pendingMentions.map((m) => (
                 <Alert key={m.node} severity="warning">
                   <Typography variant="subtitle2">{m.from} @ 你 · 节点 {m.node}</Typography>
