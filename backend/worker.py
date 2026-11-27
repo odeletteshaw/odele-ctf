@@ -35,6 +35,10 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any,
     pattern = None
     if spec.get("kind") == "custom":
         prefix = spec.get("flag_prefix") or "flag"
+        # Platform specs created before the CTF2 prefix change still carry flag_prefix
+        # "flag"; the platform challenge id is the reliable signal.
+        if spec.get("platform_challenge_id"):
+            prefix = "CTF2"
         pattern = re.compile(re.escape(prefix) + r"\{[^}\n\"']+\}")
 
     cleanup = lambda: None  # noqa: E731
