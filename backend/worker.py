@@ -33,10 +33,11 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any,
 
     # Real targets may not use flag{...}; honor a custom prefix.
     pattern = None
-    if spec.get("kind") == "custom":
+    if spec.get("kind") == "custom" and not spec.get("platform_challenge_id"):
         prefix = spec.get("flag_prefix")
-        # An explicit prefix is strict; platform specs leave it empty so the generic
-        # extractor can see CTF2/VNCTF/flag variants (platform submission decides).
+        # Manual custom targets with an explicit prefix are strict. Platform specs
+        # (even ones created before flag_prefix was emptied) use the generic extractor
+        # so CTF2/VNCTF/flag variants are candidates; submission decides.
         if prefix:
             pattern = re.compile(re.escape(prefix) + r"\{[^}\n\"']+\}")
 
