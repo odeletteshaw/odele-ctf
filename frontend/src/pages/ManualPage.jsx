@@ -8,7 +8,7 @@ export default function ManualPage() {
   const [urls, setUrls] = useState('')
   const [desc, setDesc] = useState('')
   const [turns, setTurns] = useState(100)
-  const [prefix, setPrefix] = useState('flag')
+  const [prefix, setPrefix] = useState('')
 
   const start = async () => {
     const urlsList = urls.split('\n').map((s) => s.trim()).filter(Boolean)
@@ -16,7 +16,7 @@ export default function ManualPage() {
     const spec = {
       kind: 'custom', category: direction,
       urls: direction === 'web' ? urlsList : [],
-      description: desc.trim(), flag_prefix: prefix.trim() || 'flag',
+      description: desc.trim(), flag_prefix: prefix.trim(),
       attachments: [], max_turns: parseInt(turns, 10) || 100,
     }
     const title = urlsList[0] ? urlsList[0].split('/')[2] : direction
@@ -37,7 +37,8 @@ export default function ManualPage() {
       <TextField fullWidth multiline minRows={2} label="目标 URL（web 必填，每行一个）" value={urls} onChange={(e) => setUrls(e.target.value)} sx={{ mb: 2 }} />
       <TextField fullWidth label="题目描述 / 提示" value={desc} onChange={(e) => setDesc(e.target.value)} sx={{ mb: 2 }} />
       <TextField fullWidth type="number" label="max turns" value={turns} onChange={(e) => setTurns(e.target.value)} sx={{ mb: 2 }} />
-      <TextField fullWidth label="flag prefix" value={prefix} onChange={(e) => setPrefix(e.target.value)} sx={{ mb: 2 }} />
+      <TextField fullWidth label="flag 前缀（留空 = 匹配任意 XXX{...}，如 CTF2 / DASCTF）"
+        value={prefix} onChange={(e) => setPrefix(e.target.value)} sx={{ mb: 2 }} />
       <Button variant="contained" startIcon={<PlayArrowIcon />} onClick={start}>开始 ▶</Button>
     </Paper>
   )
