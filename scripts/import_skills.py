@@ -19,7 +19,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent / "agent" / "team_skills"
-DIRECTIONS = {"web", "crypto", "misc", "forensics", "pwn", "reverse", "ai"}
+DIRECTIONS = {"web", "crypto", "misc", "forensics", "pwn", "reverse", "ai",
+              "cloud", "blockchain", "ics", "iot", "ir", "pentest"}
 TEXT_EXT = {".md", ".txt", ".py", ".js", ".ts", ".sh", ".c", ".cpp", ".java", ".json",
             ".yaml", ".yml", ".html", ".xml", ".csv"}
 MAX_BYTES = 400_000

@@ -31,7 +31,8 @@ export default function ManualPage() {
         将以角色团队执行：团队长拆解 → 信息收集员侦察 → 方向专家解题 → 报告收集员复盘。
       </Typography>
       <TextField select fullWidth label="方向" value={direction} onChange={(e) => setDirection(e.target.value)} sx={{ mb: 2 }}>
-        <MenuItem value="web">web</MenuItem><MenuItem value="crypto">crypto</MenuItem><MenuItem value="forensics">forensics</MenuItem>
+        {['web', 'crypto', 'forensics', 'cloud', 'blockchain', 'ics', 'iot', 'ir', 'pentest']
+          .map((d) => <MenuItem key={d} value={d}>{d}</MenuItem>)}
       </TextField>
       <TextField fullWidth multiline minRows={2} label="目标 URL（web 必填，每行一个）" value={urls} onChange={(e) => setUrls(e.target.value)} sx={{ mb: 2 }} />
       <TextField fullWidth label="题目描述 / 提示" value={desc} onChange={(e) => setDesc(e.target.value)} sx={{ mb: 2 }} />

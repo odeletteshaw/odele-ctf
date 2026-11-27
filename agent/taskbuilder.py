@@ -23,6 +23,9 @@ from agent.tools.sandbox import python_tool  # noqa: E402
 
 Built = tuple[str | None, list[Tool], str, str, Callable[[], None]]
 
+# Directions with role experts/skill packs but no dedicated hermetic category.
+EXTRA_DIRECTIONS = {"cloud", "blockchain", "ics", "iot", "ir", "pentest"}
+
 
 def _system_with_techniques(system: str, category: str) -> str:
     """Append a compact index of the category's techniques to the system prompt."""
@@ -136,6 +139,22 @@ def _custom(spec: dict[str, Any]) -> Built:
         user = f"{attachment_block}Challenge description: {description or '(none given)'}"
         return None, tools, _system_with_techniques(agent.SYSTEM_PROMPT, direction), \
             user, cleanup_workdir
+
+    if direction in EXTRA_DIRECTIONS:
+        generic = importlib.import_module("agent.categories.generic.agent")
+        if urls and workdir is None:
+            workdir = Path(tempfile.mkdtemp(prefix="ctf-custom-"))
+        client = generic.new_http_client() if urls else None
+        tools = (generic.target_tools(urls, client, workdir) if client
+                 else generic.text_tools(workdir))
+        user = f"{attachment_block}Challenge description: {description or '(none given)'}"
+
+        def cleanup_extra() -> None:
+            if client:
+                client.close()
+            cleanup_workdir()
+
+        return None, tools, generic.system_prompt(direction), user, cleanup_extra
 
     if direction == "forensics":
         forensics = importlib.import_module("agent.categories.forensics.agent")

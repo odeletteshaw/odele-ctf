@@ -61,6 +61,8 @@ agent/        解题能力层（纯库）
 - **角色团队**（`agent/team.py`）：团队长（无工具，出计划）→ 信息收集员（用题型工具侦察，
   pwn/ai 因目标有状态而跳过）→ 方向专家（带着计划+侦察结果解题）→ 报告收集员（写题解与
   团队复盘）。手动与平台打题都走这条链；session 的 `role` 事件组成「团队复盘」时间线。
+  默认 13 个方向专家：web/crypto/misc/forensics/pwn/reverse/ai + cloud/blockchain/ics/
+  iot/ir/pentest（后六个用手动解题的 `agent/categories/generic` 通用工具集）。
   注意：团队 ≠ 打题 token 分配（后者见 `backend/slots.py`）。
 - **角色技能包**（`agent/skills.py` + `agent/team_skills/`）：每角色一套 SKILL.md 与
   references，系统 prompt 只放索引，用 `search_role_skill` 按需读取；侦察员工具白名单

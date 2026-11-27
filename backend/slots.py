@@ -14,6 +14,12 @@ DEFAULT_SLOTS = {
     "reverse": 2,
     "pwn": 2,
     "ai": 2,
+    "cloud": 2,
+    "blockchain": 2,
+    "ics": 2,
+    "iot": 2,
+    "ir": 2,
+    "pentest": 2,
 }
 
 

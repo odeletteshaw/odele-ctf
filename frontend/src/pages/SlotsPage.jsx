@@ -3,7 +3,8 @@ import { Paper, Typography, TextField, Button, Stack, Chip } from '@mui/material
 import SaveIcon from '@mui/icons-material/Save'
 import { getTokenSlots, saveTokenSlots } from '../api.js'
 
-const DIRS = ['web', 'crypto', 'misc', 'forensics', 'pwn', 'reverse', 'ai']
+const DIRS = ['web', 'crypto', 'misc', 'forensics', 'pwn', 'reverse', 'ai',
+  'cloud', 'blockchain', 'ics', 'iot', 'ir', 'pentest']
 
 export default function SlotsPage() {
   const [slots, setSlots] = useState({})

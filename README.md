@@ -88,7 +88,7 @@ agent/      解题能力层（纯库，不依赖 frontend/backend）：
                knowledge / phar
   knowledge/   技巧卡（按类别，供 search_knowledge 检索）
   categories/  七个题型，每个同构：agent.py（prompt + 工具组装）+ challenges/ +
-               evaluate.py
+               evaluate.py；generic/ 是扩展方向（云/链/工控/IoT/应急/渗透）的通用工具集
 scripts/import_skills.py  把本地资料导入角色技能包
 ```
 
@@ -98,7 +98,9 @@ scripts/import_skills.py  把本地资料导入角色技能包
 
 - **团队长**：读题、拆任务、出计划并分派
 - **信息收集员**：用该题型的工具摸清目标（接口、参数、技术栈、泄露线索），输出带证据的事实清单；pwn / ai 这类有状态目标跳过侦察，避免破坏现场
-- **攻防专家**：按方向匹配（web / crypto / misc / forensics / pwn / reverse / ai 各一个），带着计划与侦察结果解题
+- **攻防专家**：按方向匹配，每个方向一个：web / crypto / misc / forensics / pwn / reverse / ai，
+  以及扩展方向 cloud / blockchain / ics / iot / ir / pentest（扩展方向用手动解题的通用工具集），
+  带着计划与侦察结果解题
 - **报告收集员**：写中文题解 + 团队复盘（分工、关键发现、利用链、成败原因）
 
 手动解题与平台自动打题都会走这套流程；session 详情页新增「团队复盘」标签，可看角色时间线。
