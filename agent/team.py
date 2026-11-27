@@ -149,6 +149,36 @@ def _topo(nodes: list[dict]) -> list[dict]:
     return order
 
 
+TRACE_BUDGET = 12000
+TRACE_ITEM = 600
+
+
+def _render_trace(events: list[dict[str, Any]], budget: int = TRACE_BUDGET) -> str:
+    """Compact execution trace (agent notes, tool calls, capped tool results)."""
+    lines: list[str] = []
+    used = 0
+    for event in events:
+        kind = event.get("type")
+        if kind == "agent":
+            line = f"[{event.get('name') or event.get('role') or 'agent'}] {event.get('text', '')}"
+        elif kind == "tool_call":
+            args = json.dumps(event.get("args") or {}, ensure_ascii=False)
+            line = f"  ▶ {event.get('name')} {args[:TRACE_ITEM]}"
+        elif kind == "tool_result":
+            out = " ".join(str(event.get("output", "")).split())
+            line = f"  ◀ {event.get('name')}: {out[:TRACE_ITEM]}"
+        elif kind == "guidance":
+            line = f"[supervisor] {event.get('text', '')}"
+        else:
+            continue
+        if used + len(line) > budget:
+            lines.append("…（执行记录已截断）")
+            break
+        lines.append(line)
+        used += len(line) + 1
+    return "\n".join(lines)
+
+
 def _ask_user_tool(callback, member: dict, node: dict) -> Tool:
     def handler(args: dict[str, Any]) -> str:
         question = str(args.get("question") or "").strip()
@@ -185,7 +215,8 @@ def _run_node(
     *,
     member: dict,
     node: dict,
-    dep_outputs: dict[str, str],
+    context_text: str,
+    plan_summary: str,
     model: str | None,
     max_turns: int,
     on_event: EventFn | None,
@@ -213,18 +244,22 @@ def _run_node(
             "标签必须来自现有标签；先 search_role_skill 或 search_knowledge 确认没有覆盖，"
             "已有覆盖就跳过并说明。正文结构：触发信号 / 步骤 / 证据 / 坑。"
         )
+    if member.get("kind") == "reporter":
+        role_system += (
+            "\n\n[报告要求] 输出详细中文题解，不要只写最后一步。按时间顺序列清楚："
+            "侦察发现了什么（接口/参数/版本/线索）、专家的每一次关键请求或命令及其响应、"
+            "如何从证据推出下一步、最终利用链与 flag。引用执行记录里真实出现的请求参数、"
+            "响应片段、偏移或输出；不要编造。"
+        )
     if skill_index:
         role_system += (
             "\n\n[你的技能索引] 需要细节时调用 search_role_skill(query)：\n" + skill_index
         )
-    deps = "\n\n".join(
-        f"### {dep_id}\n{dep_outputs.get(dep_id, '')[:4000]}"
-        for dep_id in node["depends_on"]
-    ) or "(无)"
     role_user = (
         f"用户命令 / 题目：\n{user}\n\n"
+        f"团队计划：\n{plan_summary or '(无)'}\n\n"
         f"本节点任务：{node['task']}\n\n"
-        f"前置节点结果：\n{deps}"
+        f"前序执行记录：\n{context_text or '(无)'}"
     )
     chat = chat_fn(model)
     final_text, calls = run_loop(
@@ -314,10 +349,12 @@ def run_team(
         if not summary:
             summary = "自动兜底计划：由方向专家解题，报告员复盘。"
     order = _topo(nodes)
+    nodes_by_id = {n["id"]: n for n in nodes}
     role_event(lead, "plan", "end", _summary_text(summary))
 
     # ---- execute the DAG ---------------------------------------------------
     outputs: dict[str, str] = {}
+    traces: dict[str, list[dict[str, Any]]] = {}
     skipped: set[str] = set()
     result: SolveResult | None = None
     report = ""
@@ -361,15 +398,34 @@ def run_team(
             _bucket.append(event)
             _sink(event)
 
+        # Reporters/harvesters summarize the whole run, so they see every completed
+        # node's final output AND its execution trace; other nodes see their deps.
+        if member.get("kind") in ("reporter", "harvest"):
+            context_ids = list(outputs)
+        else:
+            context_ids = [dep for dep in node["depends_on"] if dep in outputs]
+        blocks = []
+        for context_id in context_ids:
+            context_member = by_id.get(nodes_by_id[context_id]["role"], {})
+            trace = _render_trace(traces.get(context_id, []), 6000)
+            blocks.append(
+                f"### {context_id} · {context_member.get('name') or context_member.get('id')}\n"
+                f"最终输出：\n{outputs[context_id][:2500]}\n"
+                f"执行记录：\n{trace or '(无)'}"
+            )
+        context_text = "\n\n".join(blocks)
+
         node_result = _run_node(
             tools, system, user,
-            member=member, node=node, dep_outputs=outputs,
+            member=member, node=node, context_text=context_text,
+            plan_summary=summary,
             model=model, max_turns=max_turns, on_event=node_sink,
             guidance=guidance, flag_pattern=flag_pattern, diagnostic=diagnostic,
             ask_user=ask_user,
         )
         total_calls += node_result.tool_calls
         outputs[node["id"]] = node_result.final_text
+        traces[node["id"]] = list(node_events)
         role_event(member, node["id"], "end", _summary_text(node_result.final_text))
         raw_emit({"type": "message", "from": member.get("name") or member.get("id"),
                   "to": "团队", "kind": "result", "node": node["id"],
