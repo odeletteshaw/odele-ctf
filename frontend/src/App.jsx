@@ -9,6 +9,7 @@ import CtfPage from './pages/CtfPage.jsx'
 import MemoriesPage from './pages/MemoriesPage.jsx'
 import ManualPage from './pages/ManualPage.jsx'
 import TeamPage from './pages/TeamPage.jsx'
+import SessionPage from './pages/SessionPage.jsx'
 import ConfigPage from './pages/ConfigPage.jsx'
 
 const NAV = [
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="/memories" element={<MemoriesPage />} />
           <Route path="/manual" element={<ManualPage />} />
           <Route path="/team" element={<TeamPage />} />
+          <Route path="/sessions/:id" element={<SessionPage />} />
           <Route path="/config" element={<ConfigPage />} />
         </Routes>
       </Box>

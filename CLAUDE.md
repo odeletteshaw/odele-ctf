@@ -61,9 +61,11 @@ agent/        解题能力层（纯库）
   （节点=角色任务/依赖/needs_approval），其余角色扁平、任意调度；chain 是线性 DAG。
   需要审批的节点通过 worker 的 approvals 队列阻塞等待，页面批准/驳回后继续。
   默认角色池：信息收集 + 13 个方向专家（web/crypto/misc/forensics/pwn/reverse/ai +
-  cloud/blockchain/ics/iot/ir/pentest）+ 报告收集；后六个方向用
+  cloud/blockchain/ics/iot/ir/pentest）+ 知识收割 + 报告收集；后六个方向用
   `agent/categories/generic` 通用工具集。平台 token 不按方向绑定：开始打题时勾选本次
   使用的 token，方向在所选 token 间轮转；token 在配置页维护。
+- **知识收割**（`agent/harvest.py`，kind=harvest）：团队长仅在出现可复用新知识时安排；
+  `harvest_skill` 强制防冗杂（一题≤2 张、去重、禁 flag/目标域名、标签白名单、不改旧卡）。
 - **技能库**（`agent/skills.py` + `agent/skill_library/`）：扁平库，每篇 md 带
   id/name/description/tags；角色绑定 skill id 或 `tag:xxx`，索引进 prompt、用
   `search_role_skill` 按需读取；导入资料用 `scripts/import_skills.py`。

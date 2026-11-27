@@ -21,6 +21,7 @@ from agent.loop import (
     extract_flags,
     run_loop,
 )
+from agent.harvest import harvest_tool
 from agent.skills import briefing, index, resolve, role_skill_tool
 
 LEAD_SYSTEM = """你是 CTF 团队的团队长，也是唯一直接接收用户命令的角色。
@@ -30,6 +31,8 @@ LEAD_SYSTEM = """你是 CTF 团队的团队长，也是唯一直接接收用户�
 - 最多 6 个节点；节点 id 唯一；depends_on 引用前置节点 id；chain 就让每个节点依赖前一个。
 - 只有列出的角色 id 可用，不要臆造；不要自己解题，也不要输出 flag。
 - 高风险操作、提交答案、或需要用户拍板的节点，标 needs_approval: true。
+- 若本次产生了可复用的新知识，可安排知识收割员（kind: harvest）在最后整理；
+  没有新知识就不要调用它。
 - 计划正文简短（目标、思路、为何选这些角色）；最后单独输出一行 JSON：
   {"summary": "一句话计划", "nodes": [
     {"id": "n1", "role": "角色id", "task": "给该角色的具体任务",
@@ -171,6 +174,14 @@ def _run_node(
         f"职责：{member.get('description') or '按团队长分派执行'}\n"
         "先核对前置结果与证据，再执行本节点任务；每个结论附证据。"
     )
+    if member.get("kind") == "harvest":
+        node_tools.append(harvest_tool())
+        role_system += (
+            "\n\n[知识收割规则] 只把可复用、此前未覆盖的技术写入技能库，宁缺毋滥："
+            "一题最多 2 张卡；不写 flag/题目名/目标域名/IP/一次性 payload；"
+            "标签必须来自现有标签；先 search_role_skill 或 search_knowledge 确认没有覆盖，"
+            "已有覆盖就跳过并说明。正文结构：触发信号 / 步骤 / 证据 / 坑。"
+        )
     if skill_index:
         role_system += (
             "\n\n[你的技能索引] 需要细节时调用 search_role_skill(query)：\n" + skill_index

@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Box, Button, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
   FormControlLabel, Checkbox, TextField, MenuItem, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Paper, Typography,
-  Stack, IconButton, Tooltip, Tabs, Tab, TableSortLabel, Alert,
+  Stack, IconButton, Tooltip, TableSortLabel, Alert, TablePagination,
 } from '@mui/material'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import StopIcon from '@mui/icons-material/Stop'
@@ -12,8 +13,8 @@ import VisibilityIcon from '@mui/icons-material/Visibility'
 import ReplayIcon from '@mui/icons-material/Replay'
 import DeleteIcon from '@mui/icons-material/Delete'
 import {
-  listSessions, getStatus, getSlots, getSession, startAutosolve, stopAutosolve,
-  stopSession, deleteSession, retrySession, batchDelete, approveSession, listTokens,
+  listSessions, getStatus, getSlots, startAutosolve, stopAutosolve,
+  stopSession, deleteSession, retrySession, batchDelete, listTokens,
 } from '../api.js'
 
 const STATUS = {
@@ -30,6 +31,7 @@ const FAILED = ['done', 'failed', 'error', 'cancelled']
 const DIRS = ['web', 'crypto', 'misc', 'forensics']
 
 export default function CtfPage() {
+  const navigate = useNavigate()
   const [sessions, setSessions] = useState([])
   const [autosolving, setAutosolving] = useState(false)
   const [slots, setSlots] = useState([])
@@ -37,8 +39,8 @@ export default function CtfPage() {
   const [dirs, setDirs] = useState({})
   const [diff, setDiff] = useState('')
   const [maxn, setMaxn] = useState(3)
-  const [detail, setDetail] = useState(null)
-  const [tab, setTab] = useState(0)
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(20)
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [catFilter, setCatFilter] = useState('all')
@@ -145,7 +147,10 @@ export default function CtfPage() {
       })
   }, [sessions, q, statusFilter, catFilter, sort])
 
-  const view = async (id) => { setDetail(await getSession(id)); setTab(0) }
+  const view = (id) => navigate(`/sessions/${id}`)
+  const shown = visible.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+
+  useEffect(() => { setPage(0) }, [q, statusFilter, catFilter, sort])
 
   const slotText = slots.map((s) =>
     `${s.direction}·t${s.token_index} ${s.running ? s.phase + (s.current_title ? ':' + s.current_title : '') : '停'}`).join(' | ')
@@ -207,7 +212,7 @@ export default function CtfPage() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {visible.map((s) => {
+            {shown.map((s) => {
               const st = STATUS[s.status] || { label: s.status, color: 'default' }
               return (
                 <TableRow key={s.id} hover>
@@ -236,6 +241,19 @@ export default function CtfPage() {
             })}
           </TableBody>
         </Table>
+        <TablePagination
+          component="div"
+          count={visible.length}
+          page={page}
+          rowsPerPage={rowsPerPage}
+          onPageChange={(e, next) => setPage(next)}
+          onRowsPerPageChange={(e) => {
+            setRowsPerPage(parseInt(e.target.value, 10))
+            setPage(0)
+          }}
+          rowsPerPageOptions={[10, 20, 50, 100]}
+          labelRowsPerPage="每页"
+        />
       </TableContainer>
 
       {/* start autosolve dialog */}
@@ -274,59 +292,6 @@ export default function CtfPage() {
           <Button onClick={() => setAutoOpen(false)}>取消</Button>
           <Button variant="contained" onClick={doStart}>开始 ▶</Button>
         </DialogActions>
-      </Dialog>
-
-      {/* detail dialog */}
-      <Dialog open={!!detail} onClose={() => setDetail(null)} fullWidth maxWidth="md">
-        {detail && (
-          <>
-            <DialogTitle>{detail.title} · {detail.category}</DialogTitle>
-            <DialogContent>
-              <Chip size="small" label={(STATUS[detail.status] || {}).label || detail.status} color={(STATUS[detail.status] || {}).color} />
-              <Typography variant="body1" sx={{ mt: 1, color: 'success.main', fontFamily: 'Menlo,monospace' }}>
-                FLAG {detail.flag || '—'}
-              </Typography>
-              {(detail.approvals || []).filter((a) => a.status === 'pending').map((a) => (
-                <Alert key={a.node} severity="warning" sx={{ mt: 1.5 }}
-                  action={
-                    <Stack direction="row" spacing={1}>
-                      <Button color="success" size="small" variant="contained"
-                        onClick={() => approveSession(detail.id, a.node, true).then(() => view(detail.id))}>
-                        批准
-                      </Button>
-                      <Button color="error" size="small" variant="outlined"
-                        onClick={() => approveSession(detail.id, a.node, false).then(() => view(detail.id))}>
-                        驳回
-                      </Button>
-                    </Stack>
-                  }>
-                  <Typography variant="subtitle2">{a.role} 请求审批 · 节点 {a.node}</Typography>
-                  <Typography variant="body2">{a.task || '（无任务说明）'}</Typography>
-                </Alert>
-              ))}
-              <Tabs value={tab} onChange={(e, v) => setTab(v)} sx={{ mt: 1 }}>
-                <Tab label="Findings" /><Tab label="Thinking" /><Tab label="题解" /><Tab label="团队复盘" />
-              </Tabs>
-              <Box sx={{ mt: 1, whiteSpace: 'pre-wrap', fontFamily: 'Menlo,monospace', fontSize: 13, maxHeight: 420, overflow: 'auto' }}>
-                {tab === 0 ? (detail.paths || []).map((p) => `- ${p}`).join('\n') || '—'
-                  : tab === 1 ? (detail.thinking || '—')
-                  : tab === 2 ? (detail.writeup || '（未生成）')
-                  : (
-                    <Box sx={{ fontFamily: 'inherit', whiteSpace: 'normal' }}>
-                      {(detail.roles || []).map((r, i) => (
-                        <Box key={i} sx={{ mb: 1 }}>
-                          <Chip size="small" label={`${r.name || r.role} · ${r.status || ''}`} sx={{ mr: 1 }} />
-                          {r.summary && <span>{r.summary}</span>}
-                        </Box>
-                      ))}
-                      {!(detail.roles || []).length && '—'}
-                    </Box>
-                  )}
-              </Box>
-            </DialogContent>
-            <DialogActions><Button onClick={() => setDetail(null)}>关闭</Button></DialogActions>
-          </>
-        )}
       </Dialog>
     </Box>
   )

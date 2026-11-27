@@ -23,6 +23,7 @@ const KIND_META = {
   expert: { label: '方向专家', color: 'primary' },
   reporter: { label: '报告收集', color: 'success' },
   custom: { label: '自定义', color: 'secondary' },
+  harvest: { label: '知识收割', color: 'success' },
   worker: { label: '通用', color: 'default' },
 }
 const KIND_LABEL = { method: '方法', reference: '资料' }

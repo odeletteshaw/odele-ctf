@@ -40,6 +40,11 @@ DEFAULT_TEAM = [
          "description": f"{DIRECTION_LABELS[direction]} 方向攻防专家，按团队长分派解题"}
         for direction in DIRECTION_LABELS
     ],
+    {"id": "knowledge-harvester", "role": "worker", "kind": "harvest",
+     "name": "知识收割员", "directions": [],
+     "skills": ["harvest-method", "tag:harvested"],
+     "description": "从本次解题中提取此前未覆盖的通用技术写入技能库；已有覆盖则跳过，"
+                    "一题最多 2 张卡，避免知识库冗杂"},
     {"id": "reporter", "role": "worker", "kind": "reporter", "name": "报告收集员",
      "directions": [], "skills": ["reporter-method"],
      "description": "整理题解与团队复盘：分工、关键发现、利用链、成败原因"},
@@ -48,7 +53,7 @@ DEFAULT_TEAM = [
 LEAD_ROLE = "lead"
 WORKER_ROLE = "worker"
 VALID_ROLES = {LEAD_ROLE, WORKER_ROLE}
-VALID_KINDS = {"lead", "recon", "expert", "reporter", "custom", "worker"}
+VALID_KINDS = {"lead", "recon", "expert", "reporter", "custom", "worker", "harvest"}
 
 OLD_PACK_MAP = {
     "lead": "lead-method",
