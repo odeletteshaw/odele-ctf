@@ -26,10 +26,21 @@ FLAG_PATTERN = re.compile(r"flag\{[^}\n\"']+\}")
 # what we echo, and nudge after consecutive failures.
 MAX_TOOL_ARGS_CHARS = 20_000
 INVALID_ARGS_PREVIEW = 300
-# Fallback for targets whose flag uses a different keyword (CTF2{...}, DASCTF{...}, ...).
-# Only prefixes containing "flag" or "ctf" qualify: the old any-word pattern matched CSS
-# like "middle{position:absolute; top:50%;}" as a flag.
-GENERAL_FLAG_PATTERN = re.compile(r"(?i)\b[a-z0-9_]*(?:flag|ctf)[a-z0-9_]*\{[^}\n\"']+\}")
+# Fallback for targets whose flag uses a different keyword (CTF2{...}, VNCTF{...}, ...).
+# Any-word matches are filtered for CSS-like bodies below, because stylesheets such as
+# "middle{position:absolute; top:50%;}" otherwise look like flags.
+GENERAL_FLAG_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_]{2,}\{[^}\n\"']+\}")
+_CSS_INNER = re.compile(r"[:;]|\b\d+(?:px|em|rem|%)\b|url\(|var\(--|calc\(", re.I)
+_CSS_SELECTORS = {"body", "html", "div", "span", "section", "header", "footer",
+                  "main", "middle", "container", "wrapper"}
+
+
+def _is_css_like(flag: str) -> bool:
+    prefix = flag.split("{", 1)[0].strip().lower()
+    inner = flag[flag.find("{") + 1:flag.rfind("}")]
+    if "." in prefix or "#" in prefix or prefix in _CSS_SELECTORS:
+        return True
+    return bool(_CSS_INNER.search(inner))
 
 
 def _is_placeholder_flag(flag: str) -> bool:
@@ -51,7 +62,8 @@ def extract_flags(text: str, pattern: "re.Pattern[str] | None" = None) -> list[s
     found = [f for f in (pattern or FLAG_PATTERN).findall(text) if not _is_placeholder_flag(f)]
     if found or pattern is not None:
         return found
-    return [f for f in GENERAL_FLAG_PATTERN.findall(text) if not _is_placeholder_flag(f)]
+    return [f for f in GENERAL_FLAG_PATTERN.findall(text)
+            if not _is_placeholder_flag(f) and not _is_css_like(f)]
 
 
 @dataclass

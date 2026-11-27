@@ -158,9 +158,10 @@ def prepare_challenge(client: PlatformClient, item: dict) -> tuple[dict, dict] |
         "urls": urls,
         "description": challenge.get("description", ""),
         "attachments": attachments,
-        # CTF2 platform flags are CTF2{...}; a strict prefix prevents decoy/CSS
-        # lookalikes from being reported as the flag.
-        "flag_prefix": "CTF2",
+        # Platform flags vary by originating competition (CTF2{}, VNCTF{}, flag{}, ...).
+        # Leave the prefix empty: use the generic extractor with CSS filtering, and let
+        # the platform submission confirm whether the candidate is real.
+        "flag_prefix": "",
     }
     meta = {
         "challenge_id": challenge_id,
