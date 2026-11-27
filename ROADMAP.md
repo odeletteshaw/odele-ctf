@@ -65,7 +65,7 @@ flag XOR 混淆编译进去。agent 用 `objdump -d -s` 反汇编、沙箱跑二
 
 | 方向 | 具体 | 状态 |
 |------|------|------|
-| 静态 | 读汇编/反编译 · 理解算法 | ✅ 4 题(run_me / crackme_xor / crackme_serial / crackme_z3) |
+| 静态 | 读汇编/反编译 · 理解算法 | ✅ 5 题(run_me / crackme_xor / crackme_serial / crackme_z3 / custom_vm) |
 | crackme/keygen | 找通过校验的输入 | ✅(crackme_xor / crackme_serial) |
 | 符号执行 | z3 符号求解(angr 底层同款) | ✅ crackme_z3(30 字节耦合变换) |
 | 保护 | 混淆 · 加壳(UPX) · 反调试 | ☐ |
@@ -108,7 +108,7 @@ flag XOR 混淆编译进去。agent 用 `objdump -d -s` 反汇编、沙箱跑二
 | firm | 无过滤,模型硬拒 → 纯越狱 | ⚠ 能力边界 |
 | both_filters | 双过滤 + 模型拒答 → 天花板 | ⚠ 能力边界(原理可解) |
 
-以后可加:间接提示注入(读被投毒的外部文本)、带工具的靶子、语义级输出过滤。详见 `agent/categories/ai/TODO.md`。
+以后可加:间接提示注入(读被投毒的外部文本)、带工具的靶子、语义级输出过滤。
 
 ## 8. 现代 / 可选大类
 - **Blockchain** — 智能合约重入等,需本地 EVM。
@@ -124,3 +124,11 @@ flag XOR 混淆编译进去。agent 用 `objdump -d -s` 反汇编、沙箱跑二
   先脚本验证可解再跑模型。
 - 开新大类:先建该方向的 agent 工具(放 `agent/tools/`),再照 web/crypto 的模式建
   `agent/categories/<大类>/agent.py` + `challenges/` + `evaluate.py`。
+
+## 待重构
+
+- **两套技术卡系统合并**:`agent/knowledge/techniques/*.md`(11 张,按类别嵌套,`search_knowledge`)
+  与 `agent/skill_library/*.md`(扁平,`search_role_skill`)概念重复——web 的 ssti/ssrf/xxe/sqli
+  两边都有。计划把 knowledge/ 并入扁平技能库、统一检索,删掉 knowledge 模块与 search_knowledge。
+  涉及两个工具与记忆池(`search_memories` 目前也挂在 search_knowledge 下),是改 agent 行为的
+  代码重构,需单独回归测试,未定档。

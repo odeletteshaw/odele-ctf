@@ -29,7 +29,7 @@ agent/        解题能力层（纯库）
   tools/        agent 工具（「能力」），每个题型从这里组装
     sandbox.py python_tool() · http.py http_tool() · process.py process_tool()
     chat.py message_tool() · bin.py disassemble_tool()/run_binary_tool()
-  knowledge/    技巧卡（按类别）+ search_knowledge 检索
+  knowledge/    技巧卡（按类别）+ search_knowledge 检索（待与 skill_library 合并，见 ROADMAP「待重构」）
   skills.py     扁平技能库加载 / 检索 / search_role_skill 工具
   skill_library/ 扁平技能库（每篇 md 带 id/name/description/tags）；角色用 skill id
                 或 tag:xxx 绑定；Hello-CTF hc-skill 资料在此（CC BY-SA 4.0，见
@@ -115,6 +115,15 @@ helper（`challenges/_common.py`）、评测框架（`agent/`）。
     （`Request`、`start_server`）。
   - crypto：`DESCRIPTION: str` 和 `make(flag) -> str`，返回题面文本（把 flag 加密/编码进去的
     密文和参数）。没有 server。
+  - misc：同 crypto——`DESCRIPTION: str` 和 `make(flag) -> str`（只给 run_python）。
+  - forensics：小附件同 crypto（`make(flag) -> str`，文件 base64 内嵌题面）；大附件
+    `make(flag) -> Workspace`（`workspace.py`，文件已落盘到持久目录，agent 从 cwd `open()` 读）。
+  - pwn：`DESCRIPTION: str`（通常含源码片段 + 给定地址）和 `make(flag) -> Process`；
+    `Process.send(data: bytes) -> str` 模拟一次 payload 投喂（`categories/pwn/process.py`）。
+  - reverse：`DESCRIPTION: str` 和 `make(flag) -> ReverseTarget`（`make` 时用 clang 编译的小
+    C crackme；出题 helper 在 `challenges/_common.py`，agent 只拿到 `target.binary`）。
+  - ai：靶子是 `defender.py` 的 `Defender`（system_prompt + input/output guard，flag 在其
+    system prompt）；agent 工具 = send_message + run_python，见 `categories/ai/agent.py`。
 - **每次随机 flag**（`flag{token_hex(12)}`），这样答案无法靠猜或记忆。
 - 把新模块注册进该题型的 `evaluate.py`。
 

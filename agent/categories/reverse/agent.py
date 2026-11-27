@@ -8,7 +8,7 @@ make() time with the flag embedded, and it runs under the same no-network/rlimit
 run_python. The agent never sees the binary's path — only what the tools reveal.
 
 Challenge interface: each module in reverse/challenges/ exposes DESCRIPTION and
-make(flag) -> ReverseTarget (a compiled binary). See TODO.md.
+make(flag) -> ReverseTarget (a compiled binary). See CLAUDE.md 出题规范.
 
 Usage: python agent/categories/reverse/evaluate.py [name ...]
 """

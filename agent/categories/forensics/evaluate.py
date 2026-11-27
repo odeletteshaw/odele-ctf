@@ -1,5 +1,5 @@
 """Run the forensics agent against local challenges. Text challenges expose DESCRIPTION and
-make(flag) -> str; large-artifact challenges expose make(flag) -> Workspace. See TODO.md.
+make(flag) -> str; large-artifact challenges expose make(flag) -> Workspace. See CLAUDE.md 出题规范.
 
 Usage: python agent/categories/forensics/evaluate.py [name ...]
 """

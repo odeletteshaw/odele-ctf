@@ -1,5 +1,5 @@
 """Run the misc agent against local challenges. Add modules to CHALLENGES as you build
-them (each exposing DESCRIPTION and make(flag) -> str). See TODO.md.
+them (each exposing DESCRIPTION and make(flag) -> str). See CLAUDE.md 出题规范.
 
 Usage: python agent/categories/misc/evaluate.py [name ...]
 """

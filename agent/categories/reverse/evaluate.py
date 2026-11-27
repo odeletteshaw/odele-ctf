@@ -1,5 +1,5 @@
 """Run the reverse agent against the local crackmes. Each module exposes DESCRIPTION and
-make(flag) -> ReverseTarget (a compiled binary). See TODO.md.
+make(flag) -> ReverseTarget (a compiled binary). See CLAUDE.md 出题规范.
 
 Usage: python agent/categories/reverse/evaluate.py [name ...]
 """

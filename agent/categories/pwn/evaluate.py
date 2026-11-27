@@ -1,5 +1,5 @@
 """Run the pwn agent against the local simulated targets. Each module exposes DESCRIPTION
-and make(flag) -> Process. See TODO.md.
+and make(flag) -> Process. See CLAUDE.md 出题规范.
 
 Usage: python agent/categories/pwn/evaluate.py [name ...]
 """
