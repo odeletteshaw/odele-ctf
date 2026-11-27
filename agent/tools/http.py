@@ -1,6 +1,9 @@
 """The http_request agent capability, locked to a single target origin."""
 
+import base64
+import binascii
 import copy
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +20,30 @@ HTTP_PARAMETERS = {
         "method": {"type": "string", "description": "GET, POST, etc."},
         "path": {"type": "string", "description": "Path and query, starting with /"},
         "headers": {"type": "object", "additionalProperties": {"type": "string"}},
-        "body": {"type": "string", "description": "Raw request body"},
+        "body": {"type": "string", "description": "Raw request body (sent as UTF-8 text). "
+                 "For binary — a zip, image, or any bytes with values >127 — use body_b64 "
+                 "instead, or the bytes get mangled."},
+        "body_b64": {"type": "string", "description": "Request body as base64 of raw bytes, "
+                     "sent verbatim (not UTF-8 re-encoded). Build the bytes in run_python "
+                     "(e.g. a zip), base64-encode, and pass here. Overrides 'body'."},
+        "files": {
+            "type": "array",
+            "description": "multipart/form-data file parts, for file-upload endpoints. "
+                           "Each part's content is raw bytes via base64, so a crafted zip "
+                           "(e.g. containing a symlink) uploads intact.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "field": {"type": "string", "description": "Form field name (e.g. 'file')"},
+                    "filename": {"type": "string", "description": "Uploaded file name"},
+                    "content_b64": {"type": "string", "description": "File bytes as base64"},
+                    "content_type": {"type": "string", "description": "Optional MIME type"},
+                },
+                "required": ["field", "content_b64"],
+            },
+        },
+        "form": {"type": "object", "additionalProperties": {"type": "string"},
+                 "description": "Extra multipart/form-data text fields to send alongside 'files'."},
     },
     "required": ["method", "path"],
 }
@@ -25,6 +51,40 @@ HTTP_PARAMETERS = {
 
 class OutOfScope(ValueError):
     pass
+
+
+def _decode_b64(value: Any, label: str) -> bytes:
+    try:
+        return base64.b64decode(str(value or ""), validate=False)
+    except (binascii.Error, ValueError) as error:
+        raise OutOfScope(f"{label} is not valid base64: {error}")
+
+
+def _content_kwargs(args: dict[str, Any]) -> dict[str, Any]:
+    """Resolve the request body into httpx kwargs, binary-safe.
+
+    JSON tool arguments are text, so raw bytes (a zip whose symlink marker and CRC use
+    high bytes) must arrive base64-encoded: a plain 'body' string is UTF-8-encoded by
+    httpx and corrupts those bytes. Precedence: files (multipart) > body_b64 > body.
+    """
+    files = args.get("files")
+    if files:
+        if not isinstance(files, list):
+            raise OutOfScope("'files' must be a list of {field, filename, content_b64}")
+        parts = []
+        for item in files:
+            if not isinstance(item, dict):
+                raise OutOfScope("each 'files' entry must be an object")
+            field = str(item.get("field") or "file")
+            filename = str(item.get("filename") or "upload.bin")
+            content = _decode_b64(item.get("content_b64"), f"files[{field}].content_b64")
+            ctype = str(item.get("content_type") or "application/octet-stream")
+            parts.append((field, (filename, content, ctype)))
+        form = args.get("form")
+        return {"files": parts, "data": form if isinstance(form, dict) else None}
+    if args.get("body_b64") is not None:
+        return {"content": _decode_b64(args.get("body_b64"), "body_b64")}
+    return {"content": args.get("body")}
 
 
 def build_url(target: str, path: str) -> httpx.URL:
@@ -46,11 +106,22 @@ def format_response(response: httpx.Response) -> str:
     return f"HTTP {response.status_code}\n{headers}\n\n{body}"
 
 
+def _body_fingerprint(args: dict[str, Any]) -> str:
+    """A compact, body-type-agnostic digest so the repeat detector treats a changed
+    binary upload as a new request (not an endless identical one)."""
+    files = args.get("files")
+    if files:
+        return "files:" + hashlib.sha1(repr(files).encode("utf-8", "replace")).hexdigest()
+    if args.get("body_b64") is not None:
+        return "b64:" + hashlib.sha1(str(args.get("body_b64")).encode()).hexdigest()
+    return "body:" + str(args.get("body") or "")
+
+
 def _request_key(args: dict[str, Any]) -> list[Any]:
     """Repeat fingerprint: same verb/path/body is the same request, even if headers
     (a Cookie, a regenerated token) differ."""
     return [str(args.get("method", "GET")).upper(), str(args.get("path", "/")),
-            str(args.get("body") or "")]
+            _body_fingerprint(args)]
 
 
 def _batch_key(args: dict[str, Any]) -> list[Any]:
@@ -64,7 +135,7 @@ def run_http(target: str, client: httpx.Client, args: dict[str, Any]) -> str:
             args["method"].upper(),
             url,
             headers=args.get("headers"),
-            content=args.get("body"),
+            **_content_kwargs(args),
         )
     except (OutOfScope, httpx.HTTPError, httpx.InvalidURL, KeyError) as error:
         return f"Error: {error}"
@@ -74,7 +145,9 @@ def run_http(target: str, client: httpx.Client, args: dict[str, Any]) -> str:
 def http_tool(target: str, client: httpx.Client) -> Tool:
     return Tool(
         name="http_request",
-        description="Send an HTTP request to the challenge target. Redirects are returned, not followed.",
+        description=("Send an HTTP request to the challenge target. Redirects are returned, "
+                     "not followed. For a binary body use body_b64; to upload a file "
+                     "(multipart/form-data) use files — both carry raw bytes intact."),
         parameters=HTTP_PARAMETERS,
         handler=lambda args: run_http(target, client, args),
         repeat_key=_request_key,
@@ -109,7 +182,8 @@ def multi_http_tool(targets: list[str], client: httpx.Client) -> Tool:
         description=(
             "Send one HTTP request to a challenge target. 'target' selects which of the "
             "listed targets to hit (0-based index; see the target list in the prompt). "
-            "Redirects are returned, not followed."
+            "Redirects are returned, not followed. For a binary body use body_b64; to upload "
+            "a file (multipart/form-data) use files — both carry raw bytes intact."
         ),
         parameters=params,
         handler=handler,
@@ -186,7 +260,7 @@ def _run_batch(target: str, client: httpx.Client, reqs: list) -> str:
         try:
             url = build_url(target, path)
             response = client.request(
-                method, url, headers=req.get("headers"), content=req.get("body")
+                method, url, headers=req.get("headers"), **_content_kwargs(req)
             )
             snippet = " ".join(response.text.split())[:SNIPPET]
             lines.append(f"{idx}: {response.status_code} {method} {path} | {snippet}")
