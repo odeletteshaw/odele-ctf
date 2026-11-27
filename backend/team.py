@@ -26,6 +26,13 @@ DIRECTION_LABELS = {
     "pentest": "渗透测试",
 }
 
+# Default direction experts map to actual CTF challenge categories. "pentest" and "ir"
+# are whole methodologies (recon → exploit → post-exploit / blue-team response), not
+# challenge types: a pentest expert structurally subsumes the recon role and overlaps
+# every category expert, so they are left out of the default roster (the labels stay,
+# so a hand-made role bound to those directions still renders and routes).
+DEFAULT_EXPERT_DIRECTIONS = [d for d in DIRECTION_LABELS if d not in {"pentest", "ir"}]
+
 DEFAULT_TEAM = [
     {"id": "lead", "role": "lead", "kind": "lead", "name": "团队长", "directions": [],
      "skills": LEAD_SKILLS,
@@ -38,7 +45,7 @@ DEFAULT_TEAM = [
          "name": f"{DIRECTION_LABELS[direction]} 专家", "directions": [direction],
          "skills": ["common-method", f"tag:{direction}"],
          "description": f"{DIRECTION_LABELS[direction]} 方向攻防专家，按团队长分派解题"}
-        for direction in DIRECTION_LABELS
+        for direction in DEFAULT_EXPERT_DIRECTIONS
     ],
     {"id": "knowledge-harvester", "role": "worker", "kind": "harvest",
      "name": "知识收割员", "directions": [],
