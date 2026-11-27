@@ -62,7 +62,22 @@ def _flatten_dead_links(text: str) -> str:
 
 
 def read(entry: dict[str, Any]) -> str:
-    _, body = _parse_frontmatter(entry["path"].read_text(errors="replace"))
+    path = entry.get("path")
+    try:
+        text = path.read_text(errors="replace")
+    except (FileNotFoundError, OSError, AttributeError):
+        # The file moved/renamed since this entry was cached (e.g. a library reorg while a
+        # solve is running). Refresh the cache and re-resolve by id instead of crashing the
+        # whole run on a stale path.
+        _CACHE.update(stamp=None, entries=[])
+        fresh = next((e for e in entries() if e.get("id") == entry.get("id")), None)
+        if fresh is None or fresh.get("path") == path:
+            return ""
+        try:
+            text = fresh["path"].read_text(errors="replace")
+        except OSError:
+            return ""
+    _, body = _parse_frontmatter(text)
     return _flatten_dead_links(body)
 
 
