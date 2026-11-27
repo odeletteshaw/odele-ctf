@@ -144,6 +144,17 @@ def delete_session(session_id: int):
     return {"ok": True}
 
 
+@app.post("/api/sessions/{session_id}/writeup")
+def set_writeup(session_id: int, body: dict):
+    """Replace a task's writeup (used to backfill an older, too-short review)."""
+    text = str(body.get("text") or "").strip()
+    if not text:
+        return JSONResponse({"error": "text is required"}, status_code=400)
+    if not controller.set_writeup(session_id, text):
+        return JSONResponse({"error": "session not found"}, status_code=404)
+    return {"ok": True, "chars": len(text)}
+
+
 @app.post("/api/sessions/{session_id}/guidance")
 def send_guidance(session_id: int, body: dict):
     text = str(body.get("text") or "")

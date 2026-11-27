@@ -98,6 +98,15 @@ class Controller:
             self.manager.stop(s)
             self._bump()
 
+    def set_writeup(self, session_id: int, text: str) -> bool:
+        session = self.get_session(session_id)
+        if session is None:
+            return False
+        session.state["writeup"] = text
+        self.manager.save()
+        self._bump()
+        return True
+
     def guidance_session(self, session_id: int, text: str) -> bool:
         session = self.get_session(session_id)
         if session is None:
