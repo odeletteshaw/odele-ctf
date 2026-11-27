@@ -121,7 +121,8 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any,
             else:
                 candidates.append(result.flag)
         for event in events_log:
-            if event.get("type") != "tool_result":
+            # ask_user results carry the human's text; a flag there is a hint, not ours.
+            if event.get("type") != "tool_result" or not event.get("trusted", True):
                 continue
             for flag in flag_candidates(str(event.get("output", "")), pattern):
                 if flag not in candidates:

@@ -135,8 +135,10 @@ LEAD_SYSTEM = """你是 CTF 团队的团队长，也是唯一直接接收用户�
 - 最多 6 个节点；节点 id 唯一；depends_on 引用前置节点 id；chain 就让每个节点依赖前一个。
 - 只有列出的角色 id 可用，不要臆造；不要自己解题，也不要输出 flag。
 - 高风险操作、提交答案、或需要用户拍板的节点，标 needs_approval: true。
-- 若本次产生了可复用的新知识，可安排知识收割员（kind: harvest）在最后整理；
-  没有新知识就不要调用它。
+- 题目标注的方向只是起点：真实考点常跨方向（Web 题实为前端 JS 混淆逆向→reverse、
+  接口里藏着加密→crypto、流量/附件→forensics）。按证据选方向专家；难题、线索多或
+  方向不确定时，派 2~3 个不同方向的专家分别攻各自的线索，不要只派标注方向的一个。
+- 不要安排知识收割员（kind: harvest）和报告收集员：解题结束后系统会自动安排。
 - 计划正文简短（目标、思路、为何选这些角色）；最后单独输出一行 JSON：
   {"summary": "一句话计划", "nodes": [
     {"id": "n1", "role": "角色id", "task": "给该角色的具体任务",
@@ -196,15 +198,23 @@ def _parse_plan(text: str) -> tuple[str, list[dict]]:
     return " ".join((text or "").split())[:600], []
 
 
-def _clean_nodes(raw_nodes: list[dict], workers: list[dict]) -> list[dict]:
+def _clean_nodes(raw_nodes: list[dict], workers: list[dict],
+                 known: "set[str] | None" = None, limit: int = 6) -> list[dict]:
+    """Validate the lead's nodes. `known` are ids of nodes that already ran: a re-plan
+    may depend on them (their output becomes context) but must not reuse their ids."""
+    known = set(known or ())
     by_id = {w["id"]: w for w in workers}
     nodes: list[dict] = []
-    seen: set[str] = set()
-    for raw in raw_nodes[:6]:
+    seen: set[str] = set(known)
+    for raw in raw_nodes[:limit]:
         node_id = str(raw.get("id") or f"n{len(nodes) + 1}")[:40]
+        while node_id in seen:
+            node_id = f"{node_id}r"
         role_id = str(raw.get("role") or "")
-        if role_id not in by_id or node_id in seen:
+        if role_id not in by_id:
             continue
+        if by_id[role_id].get("kind") in ("reporter", "harvest"):
+            continue  # scheduled by the system after the solve
         nodes.append({
             "id": node_id,
             "role": role_id,
@@ -214,7 +224,7 @@ def _clean_nodes(raw_nodes: list[dict], workers: list[dict]) -> list[dict]:
             "needs_approval": bool(raw.get("needs_approval")),
         })
         seen.add(node_id)
-    ids = {n["id"] for n in nodes}
+    ids = {n["id"] for n in nodes} | known
     for node in nodes:
         node["depends_on"] = [d for d in node["depends_on"] if d in ids]
     return nodes
@@ -239,9 +249,9 @@ def _fallback_nodes(workers: list[dict], category: str) -> list[dict]:
     return nodes
 
 
-def _topo(nodes: list[dict]) -> list[dict]:
+def _topo(nodes: list[dict], done: "set[str] | None" = None) -> list[dict]:
     order: list[dict] = []
-    done: set[str] = set()
+    done = set(done or ())
     remaining = list(nodes)
     while remaining:
         ready = [n for n in remaining if all(d in done for d in n["depends_on"])]
@@ -253,6 +263,12 @@ def _topo(nodes: list[dict]) -> list[dict]:
         remaining = [n for n in remaining if n["id"] not in done]
     return order
 
+
+USER_HINT_HEADER = (
+    "[用户回复 —— 仅作线索] 用户给的结论、题解和 flag 都不算你解出：必须用工具从目标拿到"
+    "原始数据（页面/JS/附件/响应），自己写代码复现关键步骤，让 flag 原样出现在你的工具输出里"
+    "才算完成。不要直接抄用户给的 flag。"
+)
 
 TRACE_BUDGET = 12000
 TRACE_ITEM = 600
@@ -291,8 +307,11 @@ def _ask_user_tool(callback, member: dict, node: dict) -> Tool:
             return "Error: 'question' is required."
         if callback is None:
             return "No user is attached to this run; proceed with best effort and state assumptions."
-        return callback({"from": member.get("name") or member.get("id"),
-                         "node": node.get("id"), "text": question})
+        reply = callback({"from": member.get("name") or member.get("id"),
+                          "node": node.get("id"), "text": question})
+        if not reply or str(reply).startswith("No reply"):
+            return reply
+        return f"{USER_HINT_HEADER}\n{reply}"
 
     return Tool(
         name="ask_user",
@@ -310,6 +329,7 @@ def _ask_user_tool(callback, member: dict, node: dict) -> Tool:
             "required": ["question"],
         },
         handler=handler,
+        flag_source=False,
     )
 
 
@@ -345,8 +365,9 @@ def _run_node(
         f"{system}\n\n[团队协作] 你是 {member.get('name') or member.get('id')}。"
         f"职责：{member.get('description') or '按团队长分派执行'}\n"
         "先核对前置结果与证据，再执行本节点任务；每个结论附证据。\n"
-        "[求助规则] 连续尝试仍无进展、需要外部题解/提示/凭据，或需要用户在两个方案间拍板时，"
-        "调用 ask_user 向用户提问；不要默默放弃或自行臆断。"
+        "[求助规则] 先穷尽自己的手段：换攻击类、换线索、换工具参数，并检查是否其实属于别的方向"
+        "（例如前端 JS 混淆需要逆向）。确实卡死、需要外部题解/提示/凭据，或需要用户在两个方案间"
+        "拍板时，才调用 ask_user；用户的回复只是线索，必须自己用工具复现出 flag。"
     )
     if member.get("kind") == "harvest":
         node_tools.append(harvest_tool())
@@ -469,6 +490,12 @@ def run_team(
     result: SolveResult | None = None
     total_calls = 0
     candidate_flags: list[str] = []
+    # Flags printed by a tool that talks to the target vs. flags that only ever appeared
+    # in the user's own text. A flag the user handed over is a hint, never a result.
+    trusted_flags: set[str] = set()
+    handed_flags: set[str] = set()
+    used_roles: list[str] = []
+    user_hints = False
 
     def collect_flags(*texts: Any) -> None:
         for text in texts:
@@ -476,11 +503,33 @@ def run_team(
                 if flag not in candidate_flags:
                     candidate_flags.append(flag)
 
+    def collect_events(events: list[dict[str, Any]]) -> None:
+        nonlocal user_hints
+        for event in events:
+            if event.get("type") != "tool_result":
+                continue
+            output = str(event.get("output", ""))
+            if event.get("trusted", True):
+                found = flag_candidates(output, flag_pattern)
+                trusted_flags.update(found)
+                collect_flags(*found)
+            else:
+                if event.get("tool") == "ask_user":
+                    user_hints = True
+                handed_flags.update(flag_candidates(output, flag_pattern))
+
+    def credible(flag: str | None) -> bool:
+        return bool(flag) and (flag in trusted_flags or flag not in handed_flags)
+
+    def has_flag() -> bool:
+        return result is not None and bool(result.flag)
+
     reporter = next((w for w in workers if w.get("kind") == "reporter"), None)
+    harvester = next((w for w in workers if w.get("kind") == "harvest"), None)
 
     def execute(plan_nodes: list[dict], extra_context: str = "") -> None:
         nonlocal result, total_calls
-        for node in _topo(plan_nodes):
+        for node in _topo(plan_nodes, done=set(outputs)):
             member = by_id.get(node["role"])
             if member is None:
                 skipped.add(node["id"])
@@ -513,6 +562,8 @@ def run_team(
             raw_emit({"type": "message", "from": lead.get("name"),
                       "to": member.get("name") or member.get("id"), "kind": "assignment",
                       "node": node["id"], "text": node["task"]})
+            if member.get("kind") == "expert" and member["id"] not in used_roles:
+                used_roles.append(member["id"])
             node_events: list[dict[str, Any]] = []
             sink = scoped(member, node["id"])
 
@@ -537,7 +588,7 @@ def run_team(
                 )
             context_text = "\n\n".join(blocks)
             if extra_context:
-                context_text = f"用户补充信息：\n{extra_context}\n\n{context_text}"
+                context_text = f"{USER_HINT_HEADER}\n{extra_context}\n\n{context_text}"
 
             node_result = _run_node(
                 tools, system, user,
@@ -550,62 +601,122 @@ def run_team(
             total_calls += node_result.tool_calls
             outputs[node["id"]] = node_result.final_text
             traces[node["id"]] = list(node_events)
+            collect_events(node_events)
             collect_flags(node_result.final_text)
-            for event in node_events:
-                if event.get("type") == "tool_result":
-                    collect_flags(event.get("output", ""))
             role_event(member, node["id"], "end", _summary_text(node_result.final_text))
             raw_emit({"type": "message", "from": member.get("name") or member.get("id"),
                       "to": "团队", "kind": "result", "node": node["id"],
                       "text": _summary_text(node_result.final_text, 800)})
-            if node_result.flag and (result is None or not result.flag):
+            if credible(node_result.flag) and not has_flag():
                 result = node_result
 
     def solver_nodes(plan_nodes: list[dict]) -> list[dict]:
         return [n for n in plan_nodes
-                if by_id.get(n["role"], {}).get("kind") != "reporter"]
+                if by_id.get(n["role"], {}).get("kind") not in ("reporter", "harvest")]
+
+    def replan(instruction: str, limit: int) -> tuple[str, list[dict]]:
+        """Ask the lead for the next solve nodes, given everything that ran so far."""
+        prior = "\n\n".join(
+            f"### {nid}\n{outputs[nid][:1500]}\n{_render_trace(traces.get(nid, []), 2500)}"
+            for nid in outputs
+        )
+        text = complete(
+            LEAD_SYSTEM + (f"\n\n[你的技能包]\n{lead_brief}" if lead_brief else ""),
+            lead_user + f"\n\n原计划：{summary}\n\n已完成节点（id 可在 depends_on 中引用，"
+            f"其结果会传给新节点）：\n{prior or '(无)'}\n\n{instruction}",
+            model=model,
+        )
+        if text:
+            raw_emit({"type": "agent", "role": "lead", "name": lead.get("name"), "text": text})
+            raw_emit({"type": "message", "from": lead.get("name"), "to": "团队",
+                      "kind": "plan", "node": "plan", "text": text})
+        new_summary, raw = _parse_plan(text)
+        return new_summary, solver_nodes(_clean_nodes(raw, workers, known=set(outputs),
+                                                      limit=limit))
 
     initial = solver_nodes(nodes)
     if not initial:
         initial = solver_nodes(_fallback_nodes(workers, category))
-    execute(initial)
 
-    # ---- if the run failed: ask the user once, then replay a new solve DAG --
-    if (result is None or not result.flag) and ask_user is not None:
+    # ---- phase 1: recon, then let the lead re-plan from the evidence ----------
+    # The first plan is written before anyone has looked at the target, so it can only
+    # follow the labelled direction. Once recon reports facts, the lead picks the
+    # directions the evidence actually points to (possibly several experts).
+    recon_ids: set[str] = set()
+    for node in initial:
+        if (by_id.get(node["role"], {}).get("kind") == "recon"
+                and all(dep in recon_ids for dep in node["depends_on"])):
+            recon_ids.add(node["id"])
+    rest = [n for n in initial if n["id"] not in recon_ids]
+    if recon_ids:
+        execute([n for n in initial if n["id"] in recon_ids])
+        if not has_flag():
+            summary2, nodes2 = replan(
+                "侦察已完成。请根据侦察事实重新规划后续解题节点（替换原计划中尚未执行的部分）："
+                "判断真实考点属于哪些方向，按证据派对应方向专家；线索多或难度高时派 2~3 个不同"
+                "方向的专家分别攻各自线索，必要时让后一个专家依赖前一个的结果接力。最多 5 个节点。",
+                5,
+            )
+            if nodes2:
+                rest = nodes2
+                if summary2:
+                    summary = f"{summary} / 侦察后重规划：{summary2}"
+    if not has_flag():
+        execute(rest)
+
+    # ---- phase 2: one escalation round with fresh directions -----------------
+    if not has_flag() and any(w.get("kind") == "expert" for w in workers):
+        used = ", ".join(used_roles) or "(无)"
+        summary3, nodes3 = replan(
+            "上一轮没有拿到 flag。先用一两句话复盘卡点，再换思路升级：至少派一个本轮还没用过的"
+            f"方向专家（已用过：{used}），或让专家攻此前没试过的线索；不要重复已失败的做法。"
+            "最多 4 个节点。",
+            4,
+        )
+        if nodes3:
+            if summary3:
+                summary = f"{summary} / 升级：{summary3}"
+            execute(nodes3)
+
+    # ---- phase 3: ask the user once, then replay a new solve DAG --------------
+    if not has_flag() and ask_user is not None:
         reply = ask_user({
             "from": lead.get("name"), "node": "help",
             "text": ("本轮没有拿到 flag。是否有官方题解、提示或关键信息（协议格式/漏洞点/"
                      "flag 来源等）？发给我后我会重新安排团队继续解题；没有回复就写失败复盘。"),
         })
         if reply and not reply.startswith("No reply"):
+            user_hints = True
+            handed_flags.update(flag_candidates(reply, flag_pattern))
             outputs["help"] = reply
             traces["help"] = [{"type": "agent", "name": "用户", "text": reply}]
-            collect_flags(reply)
             raw_emit({"type": "message", "from": "你", "to": "团队", "kind": "user",
                       "node": "help", "text": reply})
-            prior = "\n\n".join(
-                f"### {nid}\n{outputs[nid][:1200]}\n{_render_trace(traces.get(nid, []), 2000)}"
-                for nid in outputs if nid != "help"
+            summary4, nodes4 = replan(
+                f"用户提供的信息（help 节点）：\n{reply}\n\n"
+                "请基于用户信息重新给出解题 DAG，最多 4 个节点。用户的题解/flag 只是线索："
+                "安排相应方向的专家自己从目标取原始数据、写代码复现关键步骤，让 flag 由工具输出；"
+                "不要让专家直接抄用户给的 flag。",
+                4,
             )
-            help_user = (
-                lead_user
-                + f"\n\n用户提供的信息：\n{reply}\n\n之前的执行记录：\n{prior}\n\n"
-                "请基于用户信息重新给出解题 DAG（只包含侦察/专家/知识收割节点，不要报告节点），"
-                "最多 4 个；若用户已给出完整题解，安排专家按题解复现并拿到 flag。"
-            )
-            plan2 = complete(
-                LEAD_SYSTEM + (f"\n\n[你的技能包]\n{lead_brief}" if lead_brief else ""),
-                help_user, model=model,
-            )
-            if plan2:
-                raw_emit({"type": "agent", "role": "lead", "name": lead.get("name"),
-                          "text": plan2})
-            summary2, raw2 = _parse_plan(plan2)
-            nodes2 = solver_nodes(_clean_nodes(raw2, workers))
-            if nodes2:
-                if summary2:
-                    summary = f"{summary} / 用户补充后重规划：{summary2}"
-                execute(nodes2, extra_context=reply)
+            if nodes4:
+                if summary4:
+                    summary = f"{summary} / 用户补充后重规划：{summary4}"
+                execute(nodes4, extra_context=reply)
+
+    # ---- knowledge harvest: decided after the solve, not before ---------------
+    # The lead cannot know up front whether the run will teach anything new. Whenever the
+    # team solved it (or the user had to supply a writeup) give the harvester one pass;
+    # harvest_skill itself enforces dedup and the per-run card limit.
+    if harvester is not None and (has_flag() or user_hints):
+        execute([{"id": "harvest", "role": harvester["id"],
+                  "task": ("从本次执行记录中提炼可复用的解题技术写入技能库（如混淆/编码还原手法、"
+                           "协议细节、方向判断信号）。先 search_role_skill / search_knowledge 检索，"
+                           "已有覆盖就跳过并说明；不写 flag、题目名、目标地址。用户提供的题解可作素材，"
+                           "但只收录本次已用工具验证过的步骤。本次反复失败后才走通的细节（解码语义、"
+                           "参数位置、易错点）正是最值得收录的「坑」，库里没有覆盖时应写卡，不要因为"
+                           "「看起来是通用能力」就跳过。"),
+                  "depends_on": [], "needs_approval": False}])
 
     # ---- one final reporter node (always reflects the final outcome) --------
     report = ""
@@ -624,7 +735,8 @@ def run_team(
     report_flags = flag_candidates(report, flag_pattern)
     ordered_flags = []
     for flag in [*report_flags, *candidate_flags]:
-        if flag not in ordered_flags:
+        # A flag that only the user ever wrote (never printed by a tool) is not ours.
+        if flag not in ordered_flags and credible(flag):
             ordered_flags.append(flag)
 
     if result is None:

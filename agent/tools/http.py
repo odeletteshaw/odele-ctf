@@ -263,6 +263,9 @@ def multi_http_batch_tool(targets: list[str], client: httpx.Client) -> Tool:
 
 def new_http_client() -> httpx.Client:
     # Redirects are not followed, so a response cannot move a request off the target.
+    # CTF targets routinely serve self-signed certificates; scope is enforced by the
+    # origin lock, not by certificate trust, so don't let TLS verification block recon.
     return httpx.Client(
-        follow_redirects=False, timeout=REQUEST_TIMEOUT_SECONDS, trust_env=False
+        follow_redirects=False, timeout=REQUEST_TIMEOUT_SECONDS, trust_env=False,
+        verify=False,
     )

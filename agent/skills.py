@@ -13,6 +13,7 @@ Roles bind skills by id or by tag selector (`tag:web`); `*` selects everything.
 The library is flat — there are no per-role pack directories.
 """
 
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -124,39 +125,109 @@ def index(items: list[dict[str, Any]]) -> str:
     return text
 
 
+def _tokenize(text: str) -> list[str]:
+    # \w is Unicode-aware, so a CJK phrase like "模板注入" stays one distinctive token
+    # while "SQL injection" splits into two.
+    return [t for t in re.split(r"[^\w]+", text.lower()) if len(t) >= 2]
+
+
+_ASCII_TOKEN = re.compile(r"[a-z0-9_]+")
+
+
+def _contains(token: str, text: str) -> bool:
+    """Whether `text` contains `token`. ASCII tokens match on word boundaries so "sql"
+    does not hit "nosql"; CJK tokens fall back to substring, because run-on Chinese
+    prose ("不同于模板注入的") has no separators to tokenize on."""
+    if _ASCII_TOKEN.fullmatch(token):
+        return re.search(rf"(?<![a-z0-9_]){re.escape(token)}(?![a-z0-9_])", text) is not None
+    return token in text
+
+
+# Keep only results close to the best one: a long query always grazes a few cards on a
+# stray token, and those trailing matches are noise, not coverage.
+_REL_THRESHOLD = 0.3
+
+
+def _is_generic(df: int, n: int) -> bool:
+    """A token is too generic to be a topic signal when it appears in at least half the
+    cards (and at least two of them) — e.g. "python"/"web" across a web role's skills.
+    df-ratio, not a fixed idf floor, because a tiny corpus can't produce large idf even
+    for a card's own distinctive name token (N=1 → idf=log 2)."""
+    return df >= max(2, (n + 1) // 2)
+
+
+def _corpus_df(items: list[dict[str, Any]]) -> tuple[dict[str, int], int]:
+    """Document frequency of each token across the bound skills, for idf weighting."""
+    df: dict[str, int] = {}
+    for entry in items:
+        present = set(_tokenize(str(entry["name"]))) | set(_tokenize(str(entry["description"])))
+        present.update(t.lower() for t in entry["tags"])
+        present.update(_tokenize(read(entry)))
+        for token in present:
+            df[token] = df.get(token, 0) + 1
+    return df, len(items)
+
+
 def search(items: list[dict[str, Any]], query: str, limit: int = 3,
            max_chars: int = 6000) -> str:
+    """Rank the role's skills against `query` by idf-weighted field matches.
+
+    Scoring rewards the curated fields (name, tags, description) over body prose and
+    discounts tokens that appear in most cards (idf), so a query's rare, on-topic terms
+    decide the ranking. A result is returned only when at least one query token hits a
+    curated field with real idf — a match built purely from generic body words (e.g. an
+    SSTI query grazing "python" inside a JS-deobfuscation card) scores nothing.
+    """
     q = query.strip().lower()
     if not q:
         return ""
-    tokens = [t for t in re.split(r"[^\w]+", q) if len(t) >= 2]
+    q_tokens = list(dict.fromkeys(_tokenize(q)))
+    if not q_tokens:
+        return ""
+    df, n = _corpus_df(items)
+
+    def idf(token: str) -> float:
+        d = df.get(token, 0)
+        return math.log(1 + n / d) if d else 0.0
+
     compact = q.replace(" ", "")
-    scored: list[tuple[int, dict[str, Any]]] = []
+    scored: list[tuple[float, dict[str, Any]]] = []
     for entry in items:
-        body = read(entry)
-        low = body.lower()
         name = str(entry["name"]).lower()
-        name_compact = name.replace(" ", "")
-        score = 0
-        if compact and compact in low.replace(" ", ""):
-            score += 20
-        if compact and name_compact == compact:
-            score += 30
-        elif compact and compact in name_compact:
-            score += 8
-        for token in tokens:
-            if token in name:
-                score += 5
-            if token in low:
-                score += 1
-        if score:
+        description = str(entry["description"]).lower()
+        tagtext = " ".join(entry["tags"]).lower()
+        body = read(entry).lower()
+        score = 0.0
+        strong = False
+        if compact and compact == name.replace(" ", ""):
+            score += 50.0
+            strong = True
+        for token in q_tokens:
+            weight = idf(token)
+            topical = not _is_generic(df.get(token, 0), n)
+            if _contains(token, name) or _contains(token, tagtext):
+                score += 6.0 * weight
+            elif _contains(token, description):
+                score += 3.0 * weight
+            elif _contains(token, body):
+                score += 1.0 * weight  # weaker, but a rare term here still signals coverage
+            else:
+                continue
+            # A hit qualifies the result only when the token is distinctive. Generic words
+            # ("python"/"web", in half the cards) never qualify, wherever they land — that
+            # is what stopped the SSTI query from dragging up a JS-deobfuscation card. A
+            # rare term qualifies even from the body, so coverage buried in prose surfaces.
+            strong = strong or topical
+        if score > 0 and strong:
             scored.append((score, entry))
     if not scored:
         return ""
     scored.sort(key=lambda pair: -pair[0])
+    cutoff = scored[0][0] * _REL_THRESHOLD
+    kept = [entry for score, entry in scored if score >= cutoff][:limit]
     parts: list[str] = []
-    for _, entry in scored[:limit]:
-        body = read(entry)[:max(600, max_chars // max(1, min(limit, len(scored))))]
+    for entry in kept:
+        body = read(entry)[:max(600, max_chars // max(1, len(kept)))]
         parts.append(f"## {entry['name']}\n{body}")
     return "\n\n---\n\n".join(parts)
 
@@ -187,7 +258,8 @@ def role_skill_tool(items: list[dict[str, Any]]) -> Tool | None:
         found = search(items, query)
         if not found:
             return f"No skill matches {query!r}. Try a broader keyword."
-        return "\n" + found + "\n"
+        from agent.tools.knowledge import redact_flags
+        return redact_flags("\n" + found + "\n")
 
     return Tool(
         name="search_role_skill",
@@ -204,6 +276,7 @@ def role_skill_tool(items: list[dict[str, Any]]) -> Tool | None:
             "required": ["query"],
         },
         handler=handler,
+        flag_source=False,  # library text is never evidence from the current target
     )
 
 

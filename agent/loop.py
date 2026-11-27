@@ -43,12 +43,19 @@ def _is_css_like(flag: str) -> bool:
     return bool(_CSS_INNER.search(inner))
 
 
+# Prose that merely mentions fragments, e.g. "DASCTF{d91c` + `2816}", is not a flag.
+_JOINED_FRAGMENTS = re.compile(r"`|\s\+\s")
+
+
 def _is_placeholder_flag(flag: str) -> bool:
     """True for literal placeholders like 'flag{...}' — a matched token with no alphanumeric
-    payload, which is the model echoing an example rather than a real recovered flag."""
+    payload, which is the model echoing an example rather than a real recovered flag —
+    and for markdown/concatenation prose that only names flag fragments."""
     if "{" not in flag or "}" not in flag:
         return True
     inner = flag[flag.index("{") + 1:flag.rindex("}")]
+    if _JOINED_FRAGMENTS.search(flag):
+        return True
     return not re.search(r"[A-Za-z0-9]", inner)
 
 
@@ -99,6 +106,9 @@ class Tool:
     parameters: dict[str, Any]
     handler: Callable[[dict[str, Any]], str]
     repeat_key: Callable[[dict[str, Any]], Any] | None = None
+    # False for tools whose output is not evidence from the target (ask_user returns the
+    # human's text). A flag seen only there was handed to the agent, not recovered by it.
+    flag_source: bool = True
 
     def schema(self) -> dict[str, Any]:
         return {
@@ -149,6 +159,7 @@ def run_loop(
             on_event({**event, "ts": time.time()})
 
     handlers = {tool.name: tool.handler for tool in tools}
+    trusted_tools = {tool.name for tool in tools if tool.flag_source}
     repeat_key_fns = {tool.name: tool.repeat_key for tool in tools}
     schemas = [tool.schema() for tool in tools]
     messages: list[dict[str, Any]] = [
@@ -164,7 +175,9 @@ def run_loop(
     invalid_streak = 0
     invalid_total = 0
     seen_flags: set[str] = set()
+    handed_flags: set[str] = set()  # flags only seen in user / library text, not the target
     flag_verify_nudged = False
+    handed_nudges = 0
     for _ in range(max_turns):
         # Fold in any supervisor guidance before the model's next turn.
         if guidance and (note := guidance()):
@@ -188,6 +201,25 @@ def run_loop(
             # A reported flag that never appeared verbatim in a tool result was probably
             # retyped from memory (observed: one wrong hex char). Ask for verification once
             # before accepting the conclusion; repeating it then ends normally.
+            handed = [f for f in found if f in handed_flags and f not in seen_flags]
+            if has_flag and handed and handed_nudges < 2:
+                # The human's hint is a lead, not a result: the agent must pull the raw data
+                # from the target and recover the flag itself before reporting it.
+                handed_nudges += 1
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        f"The flag(s) {', '.join(handed)} came from the user's message or the "
+                        "knowledge/memory library, not from the target, so the challenge is NOT "
+                        "solved yet. Treat that text as a hint: fetch the real data from the target with your "
+                        "tools and reproduce the decoding/exploit yourself, so the flag is "
+                        "printed verbatim by a tool (e.g. run_python). Then report it."
+                    ),
+                })
+                print("[nudge] flag came from user/library text — reproduce it", flush=True)
+                emit({"type": "guidance",
+                      "text": "(auto) flag came from user/library text — reproduce it with tools"})
+                continue
             unseen = [f for f in found if f not in seen_flags]
             if has_flag and unseen and not flag_verify_nudged:
                 flag_verify_nudged = True
@@ -293,14 +325,19 @@ def run_loop(
             else:
                 invalid_streak = 0
                 print(f"[{call.function.name}] {args}", flush=True)
-                emit({"type": "tool_call", "name": call.function.name, "args": args})
+                emit({"type": "tool_call", "name": call.function.name, "tool": call.function.name,
+                      "args": args})
                 handler = handlers.get(call.function.name)
                 output = handler(args) if handler else f"Error: unknown tool {call.function.name}"
             last_output[key] = " ".join(str(output).split())
-            emit({"type": "tool_result", "name": call.function.name, "output": output})
+            trusted = call.function.name in trusted_tools
+            emit({"type": "tool_result", "name": call.function.name, "tool": call.function.name,
+                  "trusted": trusted, "output": output})
             messages.append({"role": "tool", "tool_call_id": call.id, "content": output})
             matches = extract_flags(str(output), flag_pattern)
-            if matches:
+            if matches and not trusted:
+                handed_flags.update(matches)
+            elif matches:
                 seen_flags.update(matches)
                 if found_in_output is None and not flag_hint_sent:
                     found_in_output = matches[-1]

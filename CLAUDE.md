@@ -64,8 +64,18 @@ agent/        解题能力层（纯库）
   cloud/blockchain/ics/iot/ir/pentest）+ 知识收割 + 报告收集；后六个方向用
   `agent/categories/generic` 通用工具集。平台 token 不按方向绑定：开始打题时勾选本次
   使用的 token，方向在所选 token 间轮转；token 在配置页维护。
-- **知识收割**（`agent/harvest.py`，kind=harvest）：团队长仅在出现可复用新知识时安排；
-  `harvest_skill` 强制防冗杂（一题≤2 张、去重、禁 flag/目标域名、标签白名单、不改旧卡）。
+- **团队阶段**：团队长初始计划 → 先跑侦察节点 → **团队长按侦察证据重规划**（可跨方向派 2~3
+  个专家，如 Web 题实为前端 JS 逆向就加 reverse）→ 没拿到 flag 则**升级一轮**（至少换一个没用过的
+  方向）→ 仍失败才 ask_user 要题解并重规划 → 收割 → 报告。离线测试：`python agent/test_team_offline.py`。
+- **库里的 flag 不是本题的**：记忆池存的是历史题解原文（含当时的 flag）；`search_knowledge` /
+  `search_role_skill` 输出经 `redact_flags` 隐去 flag，且同样 `flag_source=False`（曾把别题 flag 交上去）。
+  平台回 `ALREADY_SOLVED` 时停止提交其余候选，任务记为 solved 并注明「无法单独校验」。
+- **用户给的 flag 不算解出**：`ask_user` 的 `Tool.flag_source=False`，回复带「仅作线索」头；
+  run_loop 不把其中的 flag 当「已找到」，并催 agent 用工具自己复现；team/worker 的提交候选只收
+  工具（tool_result 事件 `trusted`）原样打印过的 flag，或从未出现在用户文本里的 flag。
+- **知识收割**（`agent/harvest.py`，kind=harvest）：不再由团队长事前判断；解出（或用户给过题解）
+  后系统自动安排一次，`harvest_skill` 强制防冗杂（一题≤2 张、去重、禁 flag/目标域名、标签白名单、不改旧卡）。
+- HTTP 客户端 `verify=False`：CTF 靶机常用自签名证书，范围靠 origin 锁定而不是证书信任。
 - **团队通话**：run_team 发出 `message` 事件（团队长计划 / 分派 / 角色结果），manager 存到
   session.state.messages；每个节点工具集里都有 `ask_user`，角色可 @ 用户并阻塞等待
   `/api/sessions/{id}/reply`，用户也可发 `/guidance`。通话只存在于任务详情页（不再有独立的
@@ -73,6 +83,10 @@ agent/        解题能力层（纯库）
 - **技能库**（`agent/skills.py` + `agent/skill_library/`）：扁平库，每篇 md 带
   id/name/description/tags；角色绑定 skill id 或 `tag:xxx`，索引进 prompt、用
   `search_role_skill` 按需读取；导入资料用 `scripts/import_skills.py`。
+  检索（`skills.search` / `knowledge_tool`）按 **idf 加权 + 字段加权（name/tags > description > body）
+  + 区分度门槛**：出现在半数以上卡里的泛词（python/web）不算命中，只在正文出现的稀有术语仍可召回；
+  ASCII token 按词边界匹配（`sql` 不命中 `nosql`），CJK 用子串。无区分度命中时返回空，让收割员拿到
+  干净的「无覆盖」信号。离线测试：`agent/test_skill_search.py`。
 
 ## 核心设计原则：工具是「能力」，不是「解法」
 

@@ -5,8 +5,18 @@ letting the agent pull up the full, concrete exploitation steps when it needs a
 specific technique.
 """
 
-from agent.loop import Tool
+import re
+
+from agent.loop import FLAG_PATTERN, GENERAL_FLAG_PATTERN, Tool
 from agent.knowledge import search_memories, search_techniques
+
+
+def redact_flags(text: str) -> str:
+    """Past-solve writeups quote their own flags. Those belong to OTHER challenges: if
+    they reach the transcript they become submission candidates for this one."""
+    text = FLAG_PATTERN.sub("<flag 已隐去>", text)
+    return GENERAL_FLAG_PATTERN.sub(
+        lambda m: m.group(0) if re.search(r"[:;]", m.group(0)) else "<flag 已隐去>", text)
 
 
 def knowledge_tool(category: str) -> Tool:
@@ -24,7 +34,7 @@ def knowledge_tool(category: str) -> Tool:
             parts.append(f"[记忆 · {m.get('category')}] {m.get('title')}\n{content[:3000]}")
         if not parts:
             return f"No technique or past solve matches {query!r}. Try fewer / more general keywords."
-        return "\n" + "\n\n---\n\n".join(parts) + "\n"
+        return redact_flags("\n" + "\n\n---\n\n".join(parts) + "\n")
 
     return Tool(
         name="search_knowledge",
@@ -45,4 +55,5 @@ def knowledge_tool(category: str) -> Tool:
             "required": ["query"],
         },
         handler=handler,
+        flag_source=False,  # library text is never evidence from the current target
     )

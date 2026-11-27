@@ -17,6 +17,7 @@ from backend.settings import mask_secret, settings
 from backend.team import load_team
 
 FAILED_STATUSES = ("done", "failed", "error", "cancelled")
+ALREADY_SOLVED = "ALREADY_SOLVED"
 
 
 class Controller:
@@ -323,6 +324,7 @@ class Controller:
     def _finalize_retry(self, meta: dict, flag: str | None,
                         session: Session | None = None) -> None:
         accepted = None
+        already_solved = False
         candidates: list[str] = []
         if session is not None:
             candidates.extend(session.state.get("flag_candidates") or [])
@@ -336,6 +338,11 @@ class Controller:
                         response = client.submit_flag(meta["ground_id"], meta["challenge_id"], candidate)
                     except PlatformError as e:
                         print(f"[retry submit] rejected: {candidate!r}: {e.code}")
+                        if e.code == ALREADY_SOLVED:
+                            # Every further candidate would get the same answer; stop
+                            # instead of spraying the rest at the platform.
+                            already_solved = True
+                            break
                         continue
                     if isinstance(response, dict) and (
                             response.get("accepted") or response.get("is_solved")):
@@ -362,6 +369,8 @@ class Controller:
                 self.manager.save()
                 self._bump()
                 self._remember(session)
+            elif already_solved:
+                self._mark_already_solved(session, flag or (candidates[0] if candidates else None))
             else:
                 session.state["status"] = "failed"
                 session.state["flag"] = None
@@ -486,6 +495,7 @@ class Controller:
             solved = False
             accepted = None
             submit_error = None
+            already_solved = False
             try:
                 for candidate in dict.fromkeys(candidates):
                     try:
@@ -493,6 +503,9 @@ class Controller:
                     except PlatformError as e:
                         submit_error = e.code
                         print(f"[autosolve:{slot['direction']}] submit rejected: {candidate!r}: {e.code}")
+                        if e.code == ALREADY_SOLVED:
+                            already_solved = True
+                            break
                         continue
                     except Exception as e:
                         print(f"[autosolve:{slot['direction']}] submit error: {candidate!r}: {e}")
@@ -527,6 +540,8 @@ class Controller:
                 session.state["status"] = "solved"
                 session.state["flag"] = accepted
             self._remember(session)
+        elif already_solved and session is not None:
+            self._mark_already_solved(session, flag or (candidates[0] if candidates else None))
         else:
             cid = str(meta["challenge_id"])
             slot.setdefault("failed", set()).add(cid)
@@ -547,6 +562,19 @@ class Controller:
             self._stop_slot(slot, f"{slot['direction']} 已解出上限（{slot['done']} 道）")
         else:
             slot["phase"] = "idle"
+        self._bump()
+
+    def _mark_already_solved(self, session: Session, flag: str | None) -> None:
+        """The account solved this challenge before, so the platform answers every submit
+        with ALREADY_SOLVED. That is not a failure: keep the run's own best candidate and
+        say plainly that this run's flag could not be checked."""
+        session.state["status"] = "solved"
+        session.state["flag"] = flag
+        session.state["done"] = True
+        session.state.setdefault("messages", []).append({
+            "from": "平台", "to": "团队", "kind": "submit", "text": "平台显示该题此前已解（ALREADY_SOLVED），无法单独校验本次 flag；已停止继续提交其它候选",
+        })
+        self.manager.save()
         self._bump()
 
     def _challenge_solved(self, client, meta: dict) -> bool:
