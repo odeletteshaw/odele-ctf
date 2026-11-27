@@ -106,6 +106,9 @@ export default function TeamPage() {
   }
   useEffect(() => { load() }, [])
 
+  const orderedMembers = useMemo(() => (
+    [...members].sort((a, b) => (b.role === 'lead' ? 1 : 0) - (a.role === 'lead' ? 1 : 0))
+  ), [members])
   const member = useMemo(() => members.find((m) => m.id === selectedId) || null, [members, selectedId])
   const info = member ? skillsById[member.id] : null
   const entries = useMemo(() => {
@@ -194,7 +197,7 @@ export default function TeamPage() {
         </Box>
         <Divider />
         <List dense sx={{ flex: 1, overflow: 'auto', px: 0.5, py: 0.5 }}>
-          {members.map((m) => {
+          {orderedMembers.map((m) => {
             const mInfo = skillsById[m.id]
             const mMeta = KIND_META[m.kind] || KIND_META.worker
             return (
