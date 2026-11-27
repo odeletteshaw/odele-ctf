@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Paper, Typography, Box, Stack, Chip, Button, IconButton, Tooltip, Alert,
@@ -19,24 +19,6 @@ const STATUS = {
   error: { label: '错误', color: 'error' },
   cancelled: { label: '已停止', color: 'warning' },
   idle: { label: '待命', color: 'default' },
-}
-
-function eventLine(event) {
-  const role = event.name || event.role || event.role_id || ''
-  const prefix = role ? `[${role}] ` : ''
-  switch (event.type) {
-    case 'agent': return `${prefix}${event.text || ''}`
-    case 'tool_call': return `${prefix}▶ ${event.name} ${JSON.stringify(event.args || {})}`
-    case 'tool_result': {
-      const out = String(event.output || '')
-      return `${prefix}◀ ${event.name}: ${out.length > 500 ? out.slice(0, 500) + ' …' : out}`
-    }
-    case 'guidance': return `[supervisor] ${event.text || ''}`
-    case 'approval': return `[approval] ${event.node || ''} ${event.status || ''}`
-    case 'message': return `[${event.from || ''} → ${event.to || ''}] ${event.text || ''}`
-    case 'status': return `[status] ${event.status || ''} ${event.flag || ''}`
-    default: return null
-  }
 }
 
 export default function SessionPage() {
@@ -61,11 +43,6 @@ export default function SessionPage() {
     const timer = setInterval(refresh, 2000)
     return () => clearInterval(timer)
   }, [refresh])
-
-  const transcript = useMemo(() => {
-    const lines = (session?.transcript || []).map(eventLine).filter(Boolean)
-    return lines.slice(-300).join('\n')
-  }, [session])
 
   const pendingApprovals = (session?.approvals || []).filter((a) => a.status === 'pending')
   const pendingMentions = (session?.mentions || []).filter((m) => m.status === 'pending')
@@ -144,7 +121,7 @@ export default function SessionPage() {
 
       <Paper sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <Tabs value={tab} onChange={(e, v) => setTab(v)} sx={{ px: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Tab label="通话" /><Tab label="题解" /><Tab label="执行对话" /><Tab label="Thinking" /><Tab label="Findings" />
+          <Tab label="通话" /><Tab label="题解" /><Tab label="Findings" />
         </Tabs>
         <Box sx={{
           flex: 1, overflow: 'auto', px: 2.5, py: 2, fontSize: 14, lineHeight: 1.75,
@@ -198,16 +175,6 @@ export default function SessionPage() {
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{session.writeup}</ReactMarkdown>
           ) : <Typography color="text.secondary">（尚未生成题解）</Typography>)}
           {tab === 2 && (
-            <Typography component="pre" sx={{ fontFamily: 'Menlo,monospace', fontSize: 12, whiteSpace: 'pre-wrap', m: 0 }}>
-              {transcript || '（暂无对话）'}
-            </Typography>
-          )}
-          {tab === 3 && (
-            <Typography component="pre" sx={{ fontFamily: 'Menlo,monospace', fontSize: 13, whiteSpace: 'pre-wrap', m: 0 }}>
-              {session.thinking || '（暂无）'}
-            </Typography>
-          )}
-          {tab === 4 && (
             <Stack spacing={2}>
               <Box>
                 <Typography variant="subtitle2" sx={{ mb: 0.5 }}>访问过的路径</Typography>
