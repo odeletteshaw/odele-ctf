@@ -39,7 +39,10 @@ DEFAULT_TEAM = [
      "description": "唯一接收用户命令的角色：拆解 DAG、分派扁平角色、汇总结果、提交审批"},
     {"id": "recon", "role": "worker", "kind": "recon", "name": "信息收集员", "directions": [],
      "skills": RECON_SKILLS,
-     "description": "用工具摸清目标：接口、参数、技术栈、泄露线索，输出带证据的事实清单"},
+     "description": "漏洞利用前的前置侦察：枚举入口与参数、识别技术栈与框架/中间件指纹、"
+                    "摸清路由与泄露面（备份/.git/源码/注释/元数据）及防御形状（过滤器、可用对象），"
+                    "对比前端提交字段与后端接受字段挖隐藏入口。只摸清不利用，产出带原始请求/响应"
+                    "证据的事实清单与排除项，交给方向专家"},
     *[
         {"id": f"expert-{direction}", "role": "worker", "kind": "expert",
          "name": f"{DIRECTION_LABELS[direction]} 专家", "directions": [direction],
