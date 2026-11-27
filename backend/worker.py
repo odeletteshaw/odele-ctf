@@ -60,7 +60,7 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any,
                 if replies_q is None:
                     return "No user is attached to this run; proceed with best effort."
                 events_q.put({"type": "mention", "status": "pending", **request})
-                deadline = time.time() + 600
+                deadline = time.time() + 300
                 while time.time() < deadline:
                     try:
                         text = replies_q.get(timeout=1)

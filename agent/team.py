@@ -228,13 +228,20 @@ def _run_node(
     entries = resolve(member.get("skills"))
     skill_index = index(entries)
     skill_tool = role_skill_tool(entries)
-    node_tools = list(tools) + ([skill_tool] if skill_tool else [])
-    node_tools.append(_ask_user_tool(ask_user, member, node))
+    ask_tool = _ask_user_tool(ask_user, member, node)
+    if member.get("kind") == "reporter":
+        # A reporter writes; it must not keep probing the target. If the run failed,
+        # it asks the user for a writeup/hint instead of silently inventing one.
+        node_tools = ([skill_tool] if skill_tool else []) + [ask_tool]
+    else:
+        node_tools = list(tools) + ([skill_tool] if skill_tool else []) + [ask_tool]
 
     role_system = (
         f"{system}\n\n[团队协作] 你是 {member.get('name') or member.get('id')}。"
         f"职责：{member.get('description') or '按团队长分派执行'}\n"
-        "先核对前置结果与证据，再执行本节点任务；每个结论附证据。"
+        "先核对前置结果与证据，再执行本节点任务；每个结论附证据。\n"
+        "[求助规则] 连续尝试仍无进展、需要外部题解/提示/凭据，或需要用户在两个方案间拍板时，"
+        "调用 ask_user 向用户提问；不要默默放弃或自行臆断。"
     )
     if member.get("kind") == "harvest":
         node_tools.append(harvest_tool())
@@ -246,10 +253,12 @@ def _run_node(
         )
     if member.get("kind") == "reporter":
         role_system += (
-            "\n\n[报告要求] 输出详细中文题解，不要只写最后一步。按时间顺序列清楚："
-            "侦察发现了什么（接口/参数/版本/线索）、专家的每一次关键请求或命令及其响应、"
-            "如何从证据推出下一步、最终利用链与 flag。引用执行记录里真实出现的请求参数、"
-            "响应片段、偏移或输出；不要编造。"
+            "\n\n[报告要求] 你只负责写题解，不要再发请求、跑代码或继续解题。"
+            "输出详细中文题解，不要只写最后一步：按时间顺序列清楚侦察发现（接口/参数/版本/线索）、"
+            "每次关键请求或命令及其响应、如何从证据推出下一步、最终利用链与 flag。"
+            "引用执行记录里真实出现的请求参数、响应片段、偏移或输出；不要编造。"
+            "如果前序没有拿到 flag，先调用 ask_user 询问用户是否提供题解或提示；"
+            "用户回复后结合执行记录写失败复盘（卡在哪一步、已排除什么、下一步建议）。"
         )
     if skill_index:
         role_system += (
