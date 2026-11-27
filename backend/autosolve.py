@@ -158,7 +158,9 @@ def prepare_challenge(client: PlatformClient, item: dict) -> tuple[dict, dict] |
         "urls": urls,
         "description": challenge.get("description", ""),
         "attachments": attachments,
-        "flag_prefix": "flag",
+        # CTF2 platform flags are CTF2{...}; a strict prefix prevents decoy/CSS
+        # lookalikes from being reported as the flag.
+        "flag_prefix": "CTF2",
     }
     meta = {
         "challenge_id": challenge_id,

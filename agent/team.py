@@ -257,8 +257,7 @@ def _run_node(
             "输出详细中文题解，不要只写最后一步：按时间顺序列清楚侦察发现（接口/参数/版本/线索）、"
             "每次关键请求或命令及其响应、如何从证据推出下一步、最终利用链与 flag。"
             "引用执行记录里真实出现的请求参数、响应片段、偏移或输出；不要编造。"
-            "如果前序没有拿到 flag，先调用 ask_user 询问用户是否提供题解或提示；"
-            "用户回复后结合执行记录写失败复盘（卡在哪一步、已排除什么、下一步建议）。"
+            "如果本次没有拿到 flag，写失败复盘：卡在哪一步、已排除什么、下一步建议。"
         )
     if skill_index:
         role_system += (
@@ -357,99 +356,154 @@ def run_team(
         nodes = _fallback_nodes(workers, category)
         if not summary:
             summary = "自动兜底计划：由方向专家解题，报告员复盘。"
-    order = _topo(nodes)
-    nodes_by_id = {n["id"]: n for n in nodes}
     role_event(lead, "plan", "end", _summary_text(summary))
 
-    # ---- execute the DAG ---------------------------------------------------
     outputs: dict[str, str] = {}
     traces: dict[str, list[dict[str, Any]]] = {}
+    node_meta: dict[str, dict] = {}
     skipped: set[str] = set()
     result: SolveResult | None = None
-    report = ""
     total_calls = 0
+    reporter = next((w for w in workers if w.get("kind") == "reporter"), None)
 
-    for node in order:
-        member = by_id.get(node["role"])
-        if member is None:
-            skipped.add(node["id"])
-            continue
-        if any(dep in skipped for dep in node["depends_on"]):
-            skipped.add(node["id"])
-            role_event(member, node["id"], "skipped", "依赖节点被跳过")
-            continue
-
-        if node["needs_approval"]:
-            request = {"node": node["id"], "role": member.get("name"), "task": node["task"]}
-            raw_emit({"type": "approval", "status": "pending", **request})
-            approved = True
-            if approve is not None:
-                try:
-                    approved = bool(approve(request))
-                except Exception:
-                    approved = False
-            raw_emit({"type": "approval",
-                      "status": "approved" if approved else "rejected", **request})
-            role_event(member, node["id"], "approved" if approved else "rejected",
-                       node["task"])
-            if not approved:
+    def execute(plan_nodes: list[dict], extra_context: str = "") -> None:
+        nonlocal result, total_calls
+        for node in _topo(plan_nodes):
+            member = by_id.get(node["role"])
+            if member is None:
                 skipped.add(node["id"])
                 continue
+            node_meta[node["id"]] = node
+            if any(dep in skipped for dep in node["depends_on"]):
+                skipped.add(node["id"])
+                role_event(member, node["id"], "skipped", "依赖节点被跳过")
+                continue
 
-        role_event(member, node["id"], "start", node["task"])
-        raw_emit({"type": "message", "from": lead.get("name"),
-                  "to": member.get("name") or member.get("id"), "kind": "assignment",
-                  "node": node["id"], "text": node["task"]})
-        node_events: list[dict[str, Any]] = []
-        sink = scoped(member, node["id"])
+            if node["needs_approval"]:
+                request = {"node": node["id"], "role": member.get("name"),
+                           "task": node["task"]}
+                raw_emit({"type": "approval", "status": "pending", **request})
+                approved = True
+                if approve is not None:
+                    try:
+                        approved = bool(approve(request))
+                    except Exception:
+                        approved = False
+                raw_emit({"type": "approval",
+                          "status": "approved" if approved else "rejected", **request})
+                role_event(member, node["id"], "approved" if approved else "rejected",
+                           node["task"])
+                if not approved:
+                    skipped.add(node["id"])
+                    continue
 
-        def node_sink(event: dict[str, Any], _bucket=node_events, _sink=sink) -> None:
-            _bucket.append(event)
-            _sink(event)
+            role_event(member, node["id"], "start", node["task"])
+            raw_emit({"type": "message", "from": lead.get("name"),
+                      "to": member.get("name") or member.get("id"), "kind": "assignment",
+                      "node": node["id"], "text": node["task"]})
+            node_events: list[dict[str, Any]] = []
+            sink = scoped(member, node["id"])
 
-        # Reporters/harvesters summarize the whole run, so they see every completed
-        # node's final output AND its execution trace; other nodes see their deps.
-        if member.get("kind") in ("reporter", "harvest"):
-            context_ids = list(outputs)
-        else:
-            context_ids = [dep for dep in node["depends_on"] if dep in outputs]
-        blocks = []
-        for context_id in context_ids:
-            context_member = by_id.get(nodes_by_id[context_id]["role"], {})
-            trace = _render_trace(traces.get(context_id, []), 6000)
-            blocks.append(
-                f"### {context_id} · {context_member.get('name') or context_member.get('id')}\n"
-                f"最终输出：\n{outputs[context_id][:2500]}\n"
-                f"执行记录：\n{trace or '(无)'}"
+            def node_sink(event: dict[str, Any], _bucket=node_events, _sink=sink) -> None:
+                _bucket.append(event)
+                _sink(event)
+
+            # Reporters/harvesters summarize the whole run, so they see every completed
+            # node's final output AND its execution trace; other nodes see their deps.
+            if member.get("kind") in ("reporter", "harvest"):
+                context_ids = list(outputs)
+            else:
+                context_ids = [dep for dep in node["depends_on"] if dep in outputs]
+            blocks = []
+            for context_id in context_ids:
+                context_member = by_id.get(node_meta.get(context_id, {}).get("role", ""), {})
+                trace = _render_trace(traces.get(context_id, []), 6000)
+                blocks.append(
+                    f"### {context_id} · {context_member.get('name') or context_member.get('id')}\n"
+                    f"最终输出：\n{outputs[context_id][:2500]}\n"
+                    f"执行记录：\n{trace or '(无)'}"
+                )
+            context_text = "\n\n".join(blocks)
+            if extra_context:
+                context_text = f"用户补充信息：\n{extra_context}\n\n{context_text}"
+
+            node_result = _run_node(
+                tools, system, user,
+                member=member, node=node, context_text=context_text,
+                plan_summary=summary,
+                model=model, max_turns=max_turns, on_event=node_sink,
+                guidance=guidance, flag_pattern=flag_pattern, diagnostic=diagnostic,
+                ask_user=ask_user,
             )
-        context_text = "\n\n".join(blocks)
+            total_calls += node_result.tool_calls
+            outputs[node["id"]] = node_result.final_text
+            traces[node["id"]] = list(node_events)
+            role_event(member, node["id"], "end", _summary_text(node_result.final_text))
+            raw_emit({"type": "message", "from": member.get("name") or member.get("id"),
+                      "to": "团队", "kind": "result", "node": node["id"],
+                      "text": _summary_text(node_result.final_text, 800)})
+            if node_result.flag and (result is None or not result.flag):
+                result = node_result
 
-        node_result = _run_node(
-            tools, system, user,
-            member=member, node=node, context_text=context_text,
-            plan_summary=summary,
-            model=model, max_turns=max_turns, on_event=node_sink,
-            guidance=guidance, flag_pattern=flag_pattern, diagnostic=diagnostic,
-            ask_user=ask_user,
-        )
-        total_calls += node_result.tool_calls
-        outputs[node["id"]] = node_result.final_text
-        traces[node["id"]] = list(node_events)
-        role_event(member, node["id"], "end", _summary_text(node_result.final_text))
-        raw_emit({"type": "message", "from": member.get("name") or member.get("id"),
-                  "to": "团队", "kind": "result", "node": node["id"],
-                  "text": _summary_text(node_result.final_text, 800)})
-        if node_result.flag and (result is None or not result.flag):
-            result = node_result
-        if member.get("kind") == "reporter" and not report:
-            report = node_result.final_text
+    def solver_nodes(plan_nodes: list[dict]) -> list[dict]:
+        return [n for n in plan_nodes
+                if by_id.get(n["role"], {}).get("kind") != "reporter"]
+
+    initial = solver_nodes(nodes)
+    if not initial:
+        initial = solver_nodes(_fallback_nodes(workers, category))
+    execute(initial)
+
+    # ---- if the run failed: ask the user once, then replay a new solve DAG --
+    if (result is None or not result.flag) and ask_user is not None:
+        reply = ask_user({
+            "from": lead.get("name"), "node": "help",
+            "text": ("本轮没有拿到 flag。是否有官方题解、提示或关键信息（协议格式/漏洞点/"
+                     "flag 来源等）？发给我后我会重新安排团队继续解题；没有回复就写失败复盘。"),
+        })
+        if reply and not reply.startswith("No reply"):
+            outputs["help"] = reply
+            traces["help"] = [{"type": "agent", "name": "用户", "text": reply}]
+            raw_emit({"type": "message", "from": "你", "to": "团队", "kind": "user",
+                      "node": "help", "text": reply})
+            prior = "\n\n".join(
+                f"### {nid}\n{outputs[nid][:1200]}\n{_render_trace(traces.get(nid, []), 2000)}"
+                for nid in outputs if nid != "help"
+            )
+            help_user = (
+                lead_user
+                + f"\n\n用户提供的信息：\n{reply}\n\n之前的执行记录：\n{prior}\n\n"
+                "请基于用户信息重新给出解题 DAG（只包含侦察/专家/知识收割节点，不要报告节点），"
+                "最多 4 个；若用户已给出完整题解，安排专家按题解复现并拿到 flag。"
+            )
+            plan2 = complete(
+                LEAD_SYSTEM + (f"\n\n[你的技能包]\n{lead_brief}" if lead_brief else ""),
+                help_user, model=model,
+            )
+            if plan2:
+                raw_emit({"type": "agent", "role": "lead", "name": lead.get("name"),
+                          "text": plan2})
+            summary2, raw2 = _parse_plan(plan2)
+            nodes2 = solver_nodes(_clean_nodes(raw2, workers))
+            if nodes2:
+                if summary2:
+                    summary = f"{summary} / 用户补充后重规划：{summary2}"
+                execute(nodes2, extra_context=reply)
+
+    # ---- one final reporter node (always reflects the final outcome) --------
+    report = ""
+    if reporter is not None:
+        execute([{"id": "report", "role": reporter["id"],
+                  "task": "根据完整执行记录写最终题解；若未拿到 flag 则写失败复盘。",
+                  "depends_on": [], "needs_approval": False}])
+        report = outputs.get("report", "")
 
     if result is None:
         result = SolveResult(None, "\n\n".join(outputs.values()), total_calls)
     else:
         result = SolveResult(result.flag, result.final_text, total_calls)
     if not report:
-        report = outputs.get(order[-1]["id"], "") if order else ""
+        report = outputs.get("report") or (list(outputs.values())[-1] if outputs else "")
     return TeamOutcome(result=result, report=report, timeline=timeline, plan=summary,
                        recon="\n\n".join(outputs.values()))
 

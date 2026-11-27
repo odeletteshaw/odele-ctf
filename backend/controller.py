@@ -317,17 +317,19 @@ class Controller:
                 continue
             self._retry_submits.pop(sid, None)
             flag = session.state.get("flag")
-            if flag:
-                self._remember(session)
-            threading.Thread(target=self._finalize_retry, args=(meta, flag), daemon=True).start()
+            threading.Thread(target=self._finalize_retry,
+                             args=(meta, flag, session), daemon=True).start()
 
-    def _finalize_retry(self, meta: dict, flag: str | None) -> None:
+    def _finalize_retry(self, meta: dict, flag: str | None,
+                        session: Session | None = None) -> None:
+        accepted = False
         try:
             client = PlatformClient()
             try:
                 if flag:
                     try:
                         client.submit_flag(meta["ground_id"], meta["challenge_id"], flag)
+                        accepted = True
                     except PlatformError as e:
                         print(f"[retry submit] rejected: {e.code}")
                 client.log_note(meta["challenge_id"], "result",
@@ -340,6 +342,19 @@ class Controller:
                 client.close()
         except Exception as e:
             print(f"[retry] finalize: {e}")
+        if session is not None:
+            if flag and accepted:
+                self._remember(session)
+            else:
+                session.state["status"] = "failed"
+                session.state["flag"] = None
+                session.state["done"] = True
+                session.state.setdefault("messages", []).append({
+                    "from": "平台", "to": "团队", "kind": "submit",
+                    "text": "平台未确认该 flag，任务已标记为失败",
+                })
+                self.manager.save()
+                self._bump()
 
     # ---- autosolve control loop -------------------------------------------
     def _autosolve_step(self) -> None:
@@ -447,11 +462,13 @@ class Controller:
         try:
             flag = session.state.get("flag") if session else None
             solved = False
+            submit_error = None
             try:
                 if flag:
                     try:
                         client.submit_flag(meta["ground_id"], meta["challenge_id"], flag)
                     except PlatformError as e:
+                        submit_error = e.code
                         print(f"[autosolve:{slot['direction']}] submit rejected: {e.code}")
                     else:
                         solved = self._challenge_solved(client, meta)
@@ -470,11 +487,26 @@ class Controller:
                 pass
         if flag and solved:
             slot["done"] += 1
+            if session is not None:
+                session.state["status"] = "solved"
+                session.state["flag"] = flag
             self._remember(session)
         else:
             cid = str(meta["challenge_id"])
             slot.setdefault("failed", set()).add(cid)
             self.manager.add_failed(cid, slot["direction"])
+            # The worker reports "solved" as soon as any flag-shaped string appears;
+            # only the platform can confirm it. Correct a rejected/decoys flag here so
+            # the UI never claims a success the platform did not record.
+            if session is not None:
+                session.state["status"] = "failed"
+                session.state["flag"] = None
+                session.state["done"] = True
+                note = "平台未确认解题成功" + (f"（{submit_error}）" if submit_error else "")
+                session.state.setdefault("messages", []).append({
+                    "from": "平台", "to": "团队", "kind": "submit", "text": note,
+                })
+                self.manager.save()
         if slot["max"] and slot["done"] >= slot["max"]:
             self._stop_slot(slot, f"{slot['direction']} 已解出上限（{slot['done']} 道）")
         else:

@@ -26,10 +26,10 @@ FLAG_PATTERN = re.compile(r"flag\{[^}\n\"']+\}")
 # what we echo, and nudge after consecutive failures.
 MAX_TOOL_ARGS_CHARS = 20_000
 INVALID_ARGS_PREVIEW = 300
-# Fallback for targets whose flag uses a different keyword (ctf{...}, answer{...}, ...).
-# Require a >=3-char prefix so code/regex fragments like "d{11}", "s{14}", "n{2}" (from
-# \d{11}, s:14, ...) are never mistaken for a flag.
-GENERAL_FLAG_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_]{2,}\{[^}\n\"']+\}")
+# Fallback for targets whose flag uses a different keyword (CTF2{...}, DASCTF{...}, ...).
+# Only prefixes containing "flag" or "ctf" qualify: the old any-word pattern matched CSS
+# like "middle{position:absolute; top:50%;}" as a flag.
+GENERAL_FLAG_PATTERN = re.compile(r"(?i)\b[a-z0-9_]*(?:flag|ctf)[a-z0-9_]*\{[^}\n\"']+\}")
 
 
 def _is_placeholder_flag(flag: str) -> bool:
@@ -42,12 +42,16 @@ def _is_placeholder_flag(flag: str) -> bool:
 
 
 def extract_flags(text: str, pattern: "re.Pattern[str] | None" = None) -> list[str]:
-    """All non-placeholder flags in `text`: the given pattern (or FLAG_PATTERN) first,
-    falling back to GENERAL_FLAG_PATTERN for targets with a different keyword prefix."""
+    """All non-placeholder flags in `text`.
+
+    With an explicit pattern (a custom target's configured prefix), ONLY that prefix
+    counts — falling back to any-word matches is how a CSS rule became a "flag". The
+    GENERAL fallback is used only for the default flag{...} pattern.
+    """
     found = [f for f in (pattern or FLAG_PATTERN).findall(text) if not _is_placeholder_flag(f)]
-    if not found:
-        found = [f for f in GENERAL_FLAG_PATTERN.findall(text) if not _is_placeholder_flag(f)]
-    return found
+    if found or pattern is not None:
+        return found
+    return [f for f in GENERAL_FLAG_PATTERN.findall(text) if not _is_placeholder_flag(f)]
 
 
 @dataclass
