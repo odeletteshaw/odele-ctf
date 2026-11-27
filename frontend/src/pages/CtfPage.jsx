@@ -13,7 +13,7 @@ import ReplayIcon from '@mui/icons-material/Replay'
 import DeleteIcon from '@mui/icons-material/Delete'
 import {
   listSessions, getStatus, getSlots, getSession, startAutosolve, stopAutosolve,
-  stopSession, deleteSession, retrySession, batchDelete, approveSession,
+  stopSession, deleteSession, retrySession, batchDelete, approveSession, listTokens,
 } from '../api.js'
 
 const STATUS = {
@@ -43,6 +43,8 @@ export default function CtfPage() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [catFilter, setCatFilter] = useState('all')
   const [sort, setSort] = useState({ key: 'id', dir: 'desc' })
+  const [availableTokens, setAvailableTokens] = useState([])
+  const [chosenTokens, setChosenTokens] = useState([])
 
   const refresh = useCallback(async () => {
     try {
@@ -68,16 +70,31 @@ export default function CtfPage() {
     return () => { clearInterval(timer); if (ws) ws.close() }
   }, [refresh])
 
-  const openAuto = () => {
+  const openAuto = async () => {
     if (autosolving) { stopAutosolve().then(refresh).catch((e) => alert('停止失败: ' + e.message)); return }
+    try {
+      const r = await listTokens()
+      const hints = r.tokens || []
+      setAvailableTokens(hints)
+      setChosenTokens(hints.map((t) => t.index))
+    } catch {
+      setAvailableTokens([])
+      setChosenTokens([])
+    }
     setDirs({})
     setAutoOpen(true)
   }
   const doStart = async () => {
     const chosen = DIRS.filter((d) => dirs[d])
     if (!chosen.length) { alert('请至少勾选一个方向'); return }
+    if (!chosenTokens.length) { alert('请至少选择一个 token'); return }
     try {
-      await startAutosolve({ directions: chosen, max: maxn, difficulty: diff ? { 简单: 'Easy', 中等: 'Medium', 困难: 'Hard' }[diff] : null })
+      await startAutosolve({
+        directions: chosen,
+        max: maxn,
+        difficulty: diff ? { 简单: 'Easy', 中等: 'Medium', 困难: 'Hard' }[diff] : null,
+        tokens: chosenTokens,
+      })
       setAutoOpen(false)
       setSort({ key: 'id', dir: 'desc' })  // newest session first
       await refresh()
@@ -231,9 +248,23 @@ export default function CtfPage() {
               <FormControlLabel key={d} control={<Checkbox checked={!!dirs[d]} onChange={(e) => setDirs({ ...dirs, [d]: e.target.checked })} />} label={d} />
             ))}
           </Stack>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            将以角色团队执行：团队长拆解 → 信息收集员侦察 → 方向专家解题 → 报告收集员复盘。
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            将以角色团队执行：团队长接收命令后输出 DAG，扁平角色按需调度，需要时请求你审批。
           </Typography>
+          <Typography variant="subtitle2" sx={{ mb: 0.5 }}>本次使用哪些 token</Typography>
+          <Stack direction="row" spacing={1} sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
+            {availableTokens.map((t) => (
+              <FormControlLabel key={t.index}
+                control={<Checkbox checked={chosenTokens.includes(t.index)}
+                  onChange={(e) => setChosenTokens(e.target.checked
+                    ? [...chosenTokens, t.index].sort((a, b) => a - b)
+                    : chosenTokens.filter((x) => x !== t.index))} />}
+                label={`#${t.index} ${t.hint}`} />
+            ))}
+            {!availableTokens.length && (
+              <Alert severity="warning">还没有平台 token，请到「配置管理」页添加</Alert>
+            )}
+          </Stack>
           <TextField select fullWidth label="难度" value={diff} onChange={(e) => setDiff(e.target.value)} sx={{ mb: 2 }}>
             <MenuItem value="">不限</MenuItem><MenuItem value="简单">简单</MenuItem><MenuItem value="中等">中等</MenuItem><MenuItem value="困难">困难</MenuItem>
           </TextField>

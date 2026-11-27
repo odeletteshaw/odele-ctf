@@ -17,8 +17,7 @@ backend/      控制台后端（数据库 + API，纯服务层）
   manager.py    session 生命周期 + 持久化 · worker.py 解题子进程入口
   controller.py autosolve / retry 控制循环
   platform.py   CTF2 REST 客户端 · autosolve.py 平台题 → spec
-  team.py       角色团队配置（团队长/侦察/方向专家/报告员）
-  slots.py      打题 Token 槽位（方向 → token 下标），与团队角色分开
+  team.py       角色团队配置（团队长 + 扁平角色池）
 agent/        解题能力层（纯库）
   loop.py       Tool、run_loop、solve()、flag 提取（FLAG_PATTERN）
   team.py       角色团队编排：团队长计划 → 侦察 → 方向专家 → 报告员复盘
@@ -63,7 +62,8 @@ agent/        解题能力层（纯库）
   需要审批的节点通过 worker 的 approvals 队列阻塞等待，页面批准/驳回后继续。
   默认角色池：信息收集 + 13 个方向专家（web/crypto/misc/forensics/pwn/reverse/ai +
   cloud/blockchain/ics/iot/ir/pentest）+ 报告收集；后六个方向用
-  `agent/categories/generic` 通用工具集。注意：团队 ≠ 打题 token 分配（见 `backend/slots.py`）。
+  `agent/categories/generic` 通用工具集。平台 token 不按方向绑定：开始打题时勾选本次
+  使用的 token，方向在所选 token 间轮转；token 在配置页维护。
 - **技能库**（`agent/skills.py` + `agent/skill_library/`）：扁平库，每篇 md 带
   id/name/description/tags；角色绑定 skill id 或 `tag:xxx`，索引进 prompt、用
   `search_role_skill` 按需读取；导入资料用 `scripts/import_skills.py`。

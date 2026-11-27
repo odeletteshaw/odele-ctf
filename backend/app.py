@@ -22,7 +22,6 @@ from pydantic import BaseModel
 from backend.controller import Controller
 from backend.manager import Manager, Session
 from backend.settings import apply_model_settings, settings
-from backend.slots import load_slots, save_slots
 from backend.team import load_team, save_team
 
 manager = Manager()
@@ -111,11 +110,12 @@ class StartAutosolve(BaseModel):
     directions: list[str]
     max: int = 3
     difficulty: str | None = None
+    tokens: list[int] | None = None
 
 
 @app.post("/api/autosolve/start")
 def start_autosolve(body: StartAutosolve):
-    err = controller.start_autosolve(body.directions, body.max, body.difficulty)
+    err = controller.start_autosolve(body.directions, body.max, body.difficulty, body.tokens)
     if err:
         return JSONResponse({"error": err}, status_code=400)
     return {"ok": True}
@@ -351,21 +351,6 @@ def delete_team_role(member_id: str):
         return JSONResponse({"error": "role not found"}, status_code=404)
     controller.notify_changed()
     return {"ok": True, "members": load_team()}
-
-
-@app.get("/api/token-slots")
-def get_token_slots():
-    return {"slots": load_slots(), "token_count": len(settings.tokens())}
-
-
-@app.post("/api/token-slots")
-def set_token_slots(body: dict):
-    slots = body.get("slots")
-    if not isinstance(slots, dict):
-        return JSONResponse({"error": "slots must be an object"}, status_code=400)
-    save_slots(slots)
-    controller.notify_changed()
-    return {"slots": load_slots()}
 
 
 # ---- WebSocket ------------------------------------------------------------

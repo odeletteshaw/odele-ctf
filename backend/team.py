@@ -98,20 +98,6 @@ def _default_skills(role: str, kind: str, directions: list[str]) -> list[str]:
     return []
 
 
-def _seed_slots_from_legacy(members: list[dict]) -> None:
-    if settings.get("token_slots") is not None:
-        return
-    mapping: dict[str, int] = {}
-    for m in members:
-        for direction in m.get("directions") or []:
-            try:
-                mapping[str(direction)] = int(m.get("token_index", 0))
-            except (TypeError, ValueError):
-                mapping[str(direction)] = 0
-    if mapping:
-        settings.set("token_slots", mapping)
-
-
 def _legacy_file_team() -> list[dict] | None:
     if not LEGACY_PATH.exists():
         return None
@@ -173,12 +159,9 @@ def load_team() -> list[dict]:
     if isinstance(stored, list) and stored:
         if all(isinstance(m, dict) and m.get("role") for m in stored):
             return _normalize(stored)
-        _seed_slots_from_legacy(stored)
         settings.set("team", DEFAULT_TEAM)
         return _normalize(DEFAULT_TEAM)
-    legacy = _legacy_file_team()
-    if legacy:
-        _seed_slots_from_legacy(legacy)
+    if _legacy_file_team():
         settings.set("team", DEFAULT_TEAM)
         return _normalize(DEFAULT_TEAM)
     return _normalize(DEFAULT_TEAM)

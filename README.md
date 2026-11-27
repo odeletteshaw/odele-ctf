@@ -74,8 +74,7 @@ backend/    控制台后端（数据库 + API，纯服务层）：
   settings.py  配置存取（tokens / 团队 / 模型），API 只返回打码值
   manager.py   session 生命周期 · controller.py autosolve / retry 编排
   worker.py    解题子进程入口 · platform.py CTF2 REST 客户端
-  autosolve.py 平台题 → spec · team.py 角色团队配置（团队长/侦察/专家/报告）
-  slots.py     打题 Token 槽位（方向 → 第几个 token）
+  autosolve.py 平台题 → spec · team.py 角色团队配置（团队长 + 扁平角色池）
 agent/      解题能力层（纯库，不依赖 frontend/backend）：
   loop.py      Tool + run_loop + solve + flag 提取
   team.py      角色团队编排：团队长出计划 → 侦察 → 方向专家 → 报告员复盘
@@ -102,8 +101,9 @@ scripts/import_skills.py  把本地资料导入扁平技能库
   13 个方向专家、报告收集，以及你新建的自定义角色。
 - **阻塞式审批**：节点标记 `needs_approval` 时会暂停，session 详情页弹出待审批卡片；
   批准后继续，驳回则跳过该节点及其依赖。
-- session 的「团队复盘」标签展示节点时间线与角色输出；方向 → token 的分配仍在
-  「Token 槽位」页（`backend/slots.py`），与团队是两套概念。
+- session 的「团队复盘」标签展示节点时间线与角色输出。
+- **平台 token 不按方向绑定**：在「开始打题」时勾选本次使用哪些 token，方向在所选 token
+  间轮转；token 本身在「配置管理」页维护（它们只是 CTF 练习平台的 agent 接入凭证）。
 
 团队页支持自由新建/编辑/删除角色（名字、职责定义、绑定技能）；MCP 字段已在数据模型中
 预留，本轮暂未接入真实 MCP。

@@ -50,6 +50,10 @@ class Settings:
     def __init__(self, path: str | Path | None = None) -> None:
         self.path = Path(path) if path else db.DEFAULT_PATH
         self._conn = db.connect(self.path)
+        # Remove the obsolete direction->token slot mapping (tokens are now picked
+        # per autosolve run).
+        self._conn.execute("DELETE FROM settings WHERE key = 'token_slots'")
+        self._conn.commit()
 
     # ---- generic -----------------------------------------------------------
     def get(self, key: str, default: Any = None) -> Any:

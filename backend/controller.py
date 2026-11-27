@@ -14,7 +14,6 @@ from backend.autosolve import PLATFORM_CATEGORY, prepare_challenge
 from backend.manager import Manager, Session
 from backend.platform import PlatformClient, PlatformError, list_tokens
 from backend.settings import mask_secret, settings
-from backend.slots import load_slots
 from backend.team import load_team
 
 FAILED_STATUSES = ("done", "failed", "error", "cancelled")
@@ -60,19 +59,23 @@ class Controller:
         return any(s["running"] for s in self._auto_slots)
 
     # ---- actions ----------------------------------------------------------
-    def start_autosolve(self, directions: list[str], maxn: int, diff: str | None) -> str | None:
-        """Return an error string on failure, or None on success."""
+    def start_autosolve(self, directions: list[str], maxn: int, diff: str | None,
+                        token_indices: list[int] | None = None) -> str | None:
+        """Start autosolve. `token_indices` picks which platform tokens this run may use;
+        directions are spread round-robin across the selected tokens."""
         tokens = list_tokens()
         if not tokens:
-            return "没有 token（.env 里配 CTF2_AGENT_TOKEN_0/1/2）"
-        by_dir = load_slots()
+            return "没有 token（在配置页添加 CTF2 agent token）"
+        selected: list[int] = []
+        for index in token_indices or []:
+            if isinstance(index, int) and 0 <= index < len(tokens) and index not in selected:
+                selected.append(index)
+        if not selected:
+            selected = list(range(len(tokens)))
         self._auto_slots = []
         persisted_failed = self.manager.failed_ids()
-        # team: each direction goes to the agent that specializes in it.
-        for direction in directions:
-            ti = by_dir.get(direction, 0)
-            if ti >= len(tokens):
-                ti = 0  # fall back to the first token if the configured one is missing
+        for position, direction in enumerate(directions):
+            ti = selected[position % len(selected)]
             self._auto_slots.append({
                 "running": True, "direction": direction, "token": tokens[ti],
                 "tokens": tokens, "token_index": ti,

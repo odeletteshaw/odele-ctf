@@ -8,14 +8,12 @@ import StorageIcon from '@mui/icons-material/Storage'
 import BuildIcon from '@mui/icons-material/Build'
 import GroupIcon from '@mui/icons-material/Group'
 import MenuBookIcon from '@mui/icons-material/MenuBook'
-import VpnKeyIcon from '@mui/icons-material/VpnKey'
 import SettingsIcon from '@mui/icons-material/Settings'
 import CtfPage from './pages/CtfPage.jsx'
 import MemoriesPage from './pages/MemoriesPage.jsx'
 import ManualPage from './pages/ManualPage.jsx'
 import TeamPage from './pages/TeamPage.jsx'
 import SkillsPage from './pages/SkillsPage.jsx'
-import SlotsPage from './pages/SlotsPage.jsx'
 import ConfigPage from './pages/ConfigPage.jsx'
 
 const NAV = [
@@ -23,8 +21,7 @@ const NAV = [
   { path: '/memories', label: '通话池', icon: <StorageIcon /> },
   { path: '/manual', label: '手动解题', icon: <BuildIcon /> },
   { path: '/team', label: '团队', icon: <GroupIcon /> },
-  { path: '/skills', label: '技能包', icon: <MenuBookIcon /> },
-  { path: '/slots', label: 'Token 槽位', icon: <VpnKeyIcon /> },
+  { path: '/skills', label: '技能库', icon: <MenuBookIcon /> },
   { path: '/config', label: '配置管理', icon: <SettingsIcon /> },
 ]
 
@@ -66,7 +63,6 @@ export default function App() {
           <Route path="/manual" element={<ManualPage />} />
           <Route path="/team" element={<TeamPage />} />
           <Route path="/skills" element={<SkillsPage />} />
-          <Route path="/slots" element={<SlotsPage />} />
           <Route path="/config" element={<ConfigPage />} />
         </Routes>
       </Box>
