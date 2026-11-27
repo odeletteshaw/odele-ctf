@@ -106,6 +106,10 @@ scripts/import_skills.py  把本地资料导入角色技能包
 手动解题与平台自动打题都会走这套流程；session 详情页新增「团队复盘」标签，可看角色时间线。
 方向 → token 的分配拆到「Token 槽位」页（`backend/slots.py`），与团队角色是两套概念。
 
+团队页支持**自由新建角色**：填写名字、职责定义、勾选技能包（也可新建以角色命名的技能包）。
+自定义角色的 id 会写进团队长计划，团队长按需调用（最多 3 个），它们的发现会交给方向专家。
+每个角色还能单独勾选/取消技能包；MCP 字段已在数据模型中预留，本轮暂未接入真实 MCP。
+
 ### 角色技能包
 
 每个角色可以有自己的方法与资料包：
@@ -115,7 +119,9 @@ agent/team_skills/
   _shared/                 所有角色共享（Hello-CTF 方向路由、分类总表）
   lead/ recon/ reporter/   各角色 SKILL.md + references/
   experts/_common/         所有专家共享的方法
-  experts/<direction>/     方向专家专属资料（web/crypto/misc/forensics/pwn/reverse/ai）
+  experts/<direction>/     方向专家专属资料（web/crypto/misc/forensics/pwn/reverse/ai +
+                           cloud/blockchain/ics/iot/ir/pentest）
+  roles/<role-id>/         新建自定义角色时自动生成的技能包
 ```
 
 - 系统 prompt 只放**紧凑索引**；角色通过 `search_role_skill(query)` 按需读取全文

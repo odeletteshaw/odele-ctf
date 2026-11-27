@@ -248,11 +248,15 @@ def team_skills():
         items = entries(member_dirs(member))
         out.append({
             "index": index,
+            "id": member.get("id"),
             "role": member.get("role"),
             "name": member.get("name"),
+            "description": member.get("description") or "",
             "directions": member.get("directions") or [],
+            "skills": member.get("skills") or [],
+            "skill_names": [item["name"] for item in items],
+            "mcp": member.get("mcp") or [],
             "count": len(items),
-            "skills": [item["name"] for item in items],
             "entries": [
                 {"index": i, "name": item["name"], "description": item["description"],
                  "kind": item["kind"], "file": item["path"].name}
@@ -284,6 +288,38 @@ def team_skill_content(member_index: int, entry_index: int):
         "source": str(relative),
         "content": skills.read(item),
     }
+
+
+@app.get("/api/team/packs")
+def team_packs():
+    from agent.skills import available_packs
+    return {"packs": available_packs()}
+
+
+@app.post("/api/team/roles")
+def create_team_role(body: dict):
+    from backend.team import create_role
+    name = str(body.get("name") or "").strip()
+    if not name:
+        return JSONResponse({"error": "name is required"}, status_code=400)
+    skills = body.get("skills")
+    if skills is not None and not isinstance(skills, list):
+        return JSONResponse({"error": "skills must be a list"}, status_code=400)
+    try:
+        member = create_role(name, str(body.get("description") or ""), skills)
+    except ValueError as error:
+        return JSONResponse({"error": str(error)}, status_code=400)
+    controller.notify_changed()
+    return {"member": member, "members": load_team()}
+
+
+@app.delete("/api/team/roles/{member_id}")
+def delete_team_role(member_id: str):
+    from backend.team import delete_role
+    if not delete_role(member_id):
+        return JSONResponse({"error": "role not found"}, status_code=404)
+    controller.notify_changed()
+    return {"ok": True, "members": load_team()}
 
 
 @app.get("/api/token-slots")

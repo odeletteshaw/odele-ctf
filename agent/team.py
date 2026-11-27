@@ -6,6 +6,8 @@ The console's "team" is a set of roles, not a token allocation:
 - 信息收集员 (recon): runs the category's tools to map the target and collect facts.
 - 攻防专家 (expert): the direction specialist; solves with the plan + recon findings.
 - 报告收集员 (reporter): writes the Chinese writeup plus a team review.
+- Custom roles (role=custom): the lead may ask for up to three by emitting
+  {"invoke":[{"id","brief"}]} in its plan; they run before the expert.
 
 Stateful targets (pwn processes, AI chatbots) mutate as they are probed, so recon is
 skipped for those directions; the lead -> expert -> reporter chain still runs.
@@ -24,7 +26,7 @@ from agent.loop import (
     extract_flags,
     run_loop,
 )
-from agent.skills import briefing, index, role_skill_tool, skill_dirs
+from agent.skills import briefing, index, member_dirs, role_skill_tool
 
 LEAD = "lead"
 RECON = "recon"
@@ -121,6 +123,58 @@ def _expert_solve(
     return SolveResult(flags[-1] if flags else None, final_text, calls)
 
 
+def _json_objects(text: str) -> list[str]:
+    """Top-level {...} objects in a text, string- and nesting-aware."""
+    objects: list[str] = []
+    depth = 0
+    start: int | None = None
+    in_string = False
+    escaped = False
+    for index, char in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            if depth == 0:
+                start = index
+            depth += 1
+        elif char == "}" and depth:
+            depth -= 1
+            if depth == 0 and start is not None:
+                objects.append(text[start:index + 1])
+                start = None
+    return objects
+
+
+def _parse_invocations(plan: str, limit: int = 3) -> list[dict[str, str]]:
+    """Read the lead's {"invoke":[{"id","brief"}]} block (last valid object wins)."""
+    import json
+    for raw in reversed(_json_objects(plan)):
+        try:
+            data = json.loads(raw)
+        except (ValueError, TypeError):
+            continue
+        invoke = data.get("invoke") if isinstance(data, dict) else None
+        if not isinstance(invoke, list):
+            continue
+        picked = []
+        for item in invoke:
+            if isinstance(item, dict) and item.get("id"):
+                picked.append({"id": str(item["id"]),
+                               "brief": str(item.get("brief") or "")})
+            if len(picked) >= limit:
+                break
+        return picked
+    return []
+
+
 def _transcript(events: list[dict[str, Any]]) -> str:
     lines: list[str] = []
     for ev in events[-70:]:
@@ -172,33 +226,53 @@ def run_team(
                   "text": text})
 
     direction = category
+    lead = member(team, LEAD, direction)
+    recon = member(team, RECON, direction)
+    expert = member(team, EXPERT, direction)
+    reporter = member(team, REPORTER, direction)
+    custom_roles = [m for m in team if m.get("role") == "custom"]
 
-    lead_dirs = skill_dirs(LEAD)
-    recon_dirs = skill_dirs(RECON)
-    expert_dirs = skill_dirs(EXPERT, direction)
-    reporter_dirs = skill_dirs(REPORTER)
+    lead_dirs = member_dirs(lead)
+    recon_dirs = member_dirs(recon)
+    expert_dirs = member_dirs(expert)
+    reporter_dirs = member_dirs(reporter)
     lead_brief = briefing(lead_dirs)
     reporter_brief = briefing(reporter_dirs)
     recon_index = index(recon_dirs)
     expert_index = index(expert_dirs)
 
-    # ---- lead: plan --------------------------------------------------------
-    lead = member(team, LEAD, direction)
+    # ---- lead: plan (+ optionally invoke custom roles) ---------------------
     role_event(lead, "start")
+    roster: list[str] = []
+    for role in custom_roles:
+        skills = ", ".join(role.get("skills") or []) or "无"
+        roster.append(f"- id: {role.get('id')} | {role.get('name')} | "
+                      f"{role.get('description') or ''} | 技能包: {skills}")
+    lead_user = (
+        f"方向：{direction}\n"
+        f"可用工具（侦察/专家/自定义角色）：{', '.join(tool.name for tool in tools)}\n\n"
+        f"题目：\n{user}\n\n请给出团队计划。"
+    )
+    if custom_roles:
+        lead_user += (
+            "\n\n可调用的自定义角色（按需选择，最多 3 个；不需要就不要调用）：\n"
+            + "\n".join(roster)
+            + '\n\n在计划末尾单独输出一行 JSON，例如 '
+              '{"invoke": [{"id": "角色id", "brief": "给它的具体任务"}]}；'
+              '不需要调用时输出 {"invoke": []}。'
+        )
     plan = complete(
         LEAD_SYSTEM + (f"\n\n[你的技能包]\n{lead_brief}" if lead_brief else ""),
-        f"方向：{direction}\n"
-        f"可用工具（侦察/专家）：{', '.join(tool.name for tool in tools)}\n\n"
-        f"题目：\n{user}\n\n请给出团队计划。",
+        lead_user,
         model=model,
     )
     if plan:
         say(lead, plan)
     role_event(lead, "end", _summary(plan))
+    invocations = _parse_invocations(plan) if custom_roles else []
 
     # ---- recon: collect facts ---------------------------------------------
     recon_text = ""
-    recon = member(team, RECON, direction)
     recon_result: SolveResult | None = None
     if direction not in SKIP_RECON:
         role_event(recon, "start")
@@ -229,53 +303,107 @@ def run_team(
     else:
         role_event(recon, "skipped", "该类目标有状态，侦察会破坏专家所需的现场，跳过。")
 
+    result: SolveResult | None = None
+    expert_events: list[dict[str, Any]] = []
+    all_findings: list[str] = []
+
     if recon_result is not None and recon_result.flag:
         result = recon_result
-        expert_events: list[dict[str, Any]] = []
-        expert = member(team, EXPERT, direction)
         role_event(expert, "skipped", "侦察阶段已拿到 flag。")
     else:
-        # ---- expert: solve -------------------------------------------------
-        expert = member(team, EXPERT, direction)
-        role_event(expert, "start")
-        expert_events: list[dict[str, Any]] = []
+        # ---- custom roles the lead asked for (on demand, in order) ---------
+        by_id = {role.get("id"): role for role in custom_roles}
+        for invocation in invocations:
+            special = by_id.get(invocation.get("id"))
+            if special is None:
+                continue
+            role_event(special, "start")
+            dirs = member_dirs(special)
+            skill_index = index(dirs)
+            role_sink = scoped(special)
+            role_events: list[dict[str, Any]] = []
 
-        def expert_sink(event: dict[str, Any]) -> None:
-            expert_events.append(event)
-            scoped(expert)(event)
+            def custom_sink(event: dict[str, Any], _bucket=role_events, _sink=role_sink) -> None:
+                _bucket.append(event)
+                _sink(event)
 
-        role_note = (
-            f"[团队协作] 你是本队的{expert.get('name') or '攻防专家'}"
-            f"（方向：{direction}）。团队长计划与侦察结果见下；先核对侦察事实，再独立完成利用并拿到 flag。"
-        )
-        expert_user = (
-            f"题目：\n{user}\n\n团队长计划：\n{plan or '(none)'}\n\n"
-            f"侦察结果：\n{recon_text or '(无)'}\n\n请解题。"
-        )
-        expert_system = f"{system}\n\n{role_note}"
-        if expert_index:
-            expert_system += (
-                "\n\n[角色技能索引] 需要细节时调用 search_role_skill(query)：\n" + expert_index
+            custom_system = (
+                f"{system}\n\n[团队协作] 你是 {special.get('name')}。职责："
+                f"{special.get('description') or '按团队长分派执行'}\n"
+                "先核对侦察事实与已有发现，再执行任务；每个结论附证据。"
             )
-        result = _expert_solve(
-            tools_for(EXPERT, tools, role_skill_tool(expert_dirs)),
-            expert_system, expert_user,
-            model=model, max_turns=max_turns, on_event=expert_sink,
-            guidance=guidance, flag_pattern=flag_pattern, persist=persist,
-            diagnostic=diagnostic,
-        )
-        role_event(expert, "end", _summary(result.final_text))
+            if skill_index:
+                custom_system += (
+                    "\n\n[角色技能索引] 需要细节时调用 search_role_skill(query)：\n"
+                    + skill_index
+                )
+            custom_user = (
+                f"题目：\n{user}\n\n团队长计划：\n{plan or '(none)'}\n\n"
+                f"侦察结果：\n{recon_text or '(无)'}\n\n"
+                f"已有发现：\n" + ("\n".join(all_findings) or "(无)") + "\n\n"
+                f"你的任务：{invocation.get('brief') or '按职责支援解题'}\n"
+                "能直接拿到 flag 就给；否则输出结论与证据。"
+            )
+            special_result = _expert_solve(
+                tools_for(special.get("role", "custom"), tools, role_skill_tool(dirs)),
+                custom_system, custom_user,
+                model=model, max_turns=min(12, max_turns), on_event=custom_sink,
+                guidance=None, flag_pattern=flag_pattern, persist=False,
+                diagnostic=diagnostic,
+            )
+            all_findings.append(
+                f"[{special.get('name')}] {special_result.final_text}"
+            )
+            role_event(special, "end", _summary(special_result.final_text))
+            if special_result.flag:
+                result = special_result
+                break
+
+        if result is not None:
+            role_event(expert, "skipped", "自定义角色已拿到 flag。")
+        else:
+            # ---- expert: solve --------------------------------------------
+            role_event(expert, "start")
+
+            def expert_sink(event: dict[str, Any]) -> None:
+                expert_events.append(event)
+                scoped(expert)(event)
+
+            role_note = (
+                f"[团队协作] 你是本队的{expert.get('name') or '攻防专家'}"
+                f"（方向：{direction}）。团队长计划、侦察结果与其他角色发现见下；"
+                "先核对事实，再独立完成利用并拿到 flag。"
+            )
+            expert_user = (
+                f"题目：\n{user}\n\n团队长计划：\n{plan or '(none)'}\n\n"
+                f"侦察结果：\n{recon_text or '(无)'}\n\n"
+                f"其他角色发现：\n" + ("\n".join(all_findings) or "(无)") + "\n\n请解题。"
+            )
+            expert_system = f"{system}\n\n{role_note}"
+            if expert_index:
+                expert_system += (
+                    "\n\n[角色技能索引] 需要细节时调用 search_role_skill(query)：\n"
+                    + expert_index
+                )
+            result = _expert_solve(
+                tools_for(expert.get("role", EXPERT), tools, role_skill_tool(expert_dirs)),
+                expert_system, expert_user,
+                model=model, max_turns=max_turns, on_event=expert_sink,
+                guidance=guidance, flag_pattern=flag_pattern, persist=persist,
+                diagnostic=diagnostic,
+            )
+            role_event(expert, "end", _summary(result.final_text))
 
     # ---- reporter: writeup + team review ----------------------------------
-    reporter = member(team, REPORTER, direction)
     role_event(reporter, "start")
     report = complete(
         REPORTER_SYSTEM + (f"\n\n[你的技能包]\n{reporter_brief}" if reporter_brief else ""),
         (
             f"题目：\n{user}\n\n团队长计划：\n{plan or '(none)'}\n\n"
             f"侦察结果：\n{recon_text or '(无)'}\n\n"
+            f"自定义角色发现：\n" + ("\n".join(all_findings) or "(无)") + "\n\n"
             f"专家执行过程：\n{_transcript(expert_events)}\n\n"
-            f"最终 flag：{result.flag or '（未拿到）'}\n\n请写复盘。"
+            f"最终 flag：{(result.flag if result else None) or '（未拿到）'}\n\n请写复盘。"
         ),
         model=model,
     )

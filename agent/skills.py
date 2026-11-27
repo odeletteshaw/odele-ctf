@@ -2,12 +2,17 @@
 
 Layout (all committed to the repo):
 
+    agent/team_skills/_shared/...                      # shared routing material
     agent/team_skills/lead/SKILL.md
     agent/team_skills/recon/SKILL.md
     agent/team_skills/reporter/SKILL.md
     agent/team_skills/experts/_common/SKILL.md
     agent/team_skills/experts/<direction>/SKILL.md
+    agent/team_skills/roles/<role-id>/SKILL.md         # custom team roles
     .../references/*.md          # imported long-form material
+
+    A member binds packs explicitly via its `skills` list; the shared pack is always
+    included. Members without the field fall back to their role/direction packs.
 
 A role's system prompt gets a compact index (titles + one-liners) and a
 `search_role_skill` tool reads the matching text on demand, so big material sets do
@@ -223,15 +228,74 @@ def summary(dirs: list[Path]) -> dict[str, Any]:
     }
 
 
+def pack_dir(pack_id: str) -> Path | None:
+    """Resolve a pack id like 'lead', 'experts/web', 'roles/analyst' under team_skills."""
+    if not pack_id or ".." in str(pack_id).split("/"):
+        return None
+    path = (ROOT / str(pack_id)).resolve()
+    try:
+        path.relative_to(ROOT.resolve())
+    except ValueError:
+        return None
+    return path if path.is_dir() else None
+
+
+def default_packs(role: str, direction: str | None = None) -> list[str]:
+    """Packs used when a member has no explicit `skills` list (legacy config)."""
+    if role == "expert":
+        packs = ["experts/_common"]
+        if direction:
+            packs.append(f"experts/{direction}")
+        return packs
+    if role in {"lead", "recon", "reporter"}:
+        return [role]
+    return []
+
+
 def member_dirs(member: dict) -> list[Path]:
-    """Skill dirs for a team member entry (experts may cover several directions)."""
-    role = member.get("role")
+    """Skill dirs for a member: shared pack + the packs it has selected.
+
+    Members from older configs (no `skills`) fall back to their role/direction packs.
+    """
     found: list[Path] = []
-    for direction in member.get("directions") or [None]:
-        for path in skill_dirs(role, direction):
-            if path not in found:
-                found.append(path)
+    shared = ROOT / "_shared"
+    if shared.is_dir():
+        found.append(shared)
+    packs = member.get("skills")
+    if not isinstance(packs, list):
+        directions = member.get("directions") or [None]
+        packs = default_packs(member.get("role"), directions[0] if directions else None)
+        for direction in directions[1:]:
+            packs = [*packs, *default_packs(member.get("role"), direction)]
+    for pack in packs:
+        path = pack_dir(pack)
+        if path is not None and path not in found:
+            found.append(path)
     return found
+
+
+def available_packs() -> list[dict[str, Any]]:
+    """Packs a role can bind, with entry counts (shared is always included)."""
+    packs: list[dict[str, Any]] = []
+
+    def add(pack_id: str, label: str) -> None:
+        path = pack_dir(pack_id)
+        if path is None or pack_id == "_shared":
+            return
+        packs.append({"id": pack_id, "label": label, "count": len(entries([path]))})
+
+    add("lead", "团队长")
+    add("recon", "信息收集员")
+    add("reporter", "报告收集员")
+    for folder in sorted((ROOT / "experts").glob("*")) if (ROOT / "experts").is_dir() else []:
+        if not folder.is_dir():
+            continue
+        label = "专家通用" if folder.name == "_common" else f"专家 · {folder.name}"
+        add(f"experts/{folder.name}", label)
+    for folder in sorted((ROOT / "roles").glob("*")) if (ROOT / "roles").is_dir() else []:
+        if folder.is_dir():
+            add(f"roles/{folder.name}", f"自定义 · {folder.name}")
+    return packs
 
 
 def read(entry: dict[str, Any]) -> str:
