@@ -95,8 +95,10 @@ def harvest_tool(max_cards: int = MAX_PER_RUN) -> Tool:
             "---\n\n"
             + body.strip() + "\n"
         )
-        skills.LIBRARY.mkdir(parents=True, exist_ok=True)
-        (skills.LIBRARY / f"{skill_id}.md").write_text(text, encoding="utf-8")
+        # Harvested knowledge is filed apart from curated skills/references.
+        harvested_dir = skills.LIBRARY / "harvested"
+        harvested_dir.mkdir(parents=True, exist_ok=True)
+        (harvested_dir / f"{skill_id}.md").write_text(text, encoding="utf-8")
         skills._CACHE.update(stamp=None, entries=[])  # force a re-read on next access
         written += 1
         return (

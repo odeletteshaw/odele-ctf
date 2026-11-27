@@ -66,10 +66,16 @@ def read(entry: dict[str, Any]) -> str:
     return _flatten_dead_links(body)
 
 
+# Cards are filed by kind into subdirectories: methods/ (role playbooks = skills),
+# reference/ (imported technique references), harvested/ (knowledge accrued from our own
+# solves). The folder, not a tag, decides the kind.
+_KIND_BY_DIR = {"methods": "method", "reference": "reference", "harvested": "harvested"}
+
+
 def _stamp() -> float:
     if not LIBRARY.is_dir():
         return 0.0
-    return max((p.stat().st_mtime for p in LIBRARY.glob("*.md")), default=0.0)
+    return max((p.stat().st_mtime for p in LIBRARY.rglob("*.md")), default=0.0)
 
 
 def entries() -> list[dict[str, Any]]:
@@ -79,7 +85,7 @@ def entries() -> list[dict[str, Any]]:
         return _CACHE["entries"]
     found: list[dict[str, Any]] = []
     if LIBRARY.is_dir():
-        for path in sorted(LIBRARY.glob("*.md")):
+        for path in sorted(LIBRARY.rglob("*.md")):
             if path.name in SKIP_FILES:
                 continue
             meta, body = _parse_frontmatter(path.read_text(errors="replace"))
@@ -93,12 +99,17 @@ def entries() -> list[dict[str, Any]]:
                         description = s[:160]
                         break
             tags = meta.get("tags") if isinstance(meta.get("tags"), list) else []
+            # Kind comes from the subfolder; fall back to the old tag heuristic for a
+            # card still sitting at the library root.
+            rel = path.relative_to(LIBRARY)
+            kind = _KIND_BY_DIR.get(rel.parts[0] if len(rel.parts) > 1 else "",
+                                    "method" if "method" in tags else "reference")
             found.append({
                 "id": skill_id,
                 "name": name,
                 "description": description,
                 "tags": tags,
-                "kind": "method" if "method" in tags else "reference",
+                "kind": kind,
                 "path": path,
             })
     _CACHE.update(stamp=stamp, entries=found)

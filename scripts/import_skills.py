@@ -18,6 +18,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LIBRARY = ROOT / "agent" / "skill_library"
+# Imported material is reference knowledge; file it under reference/.
+REFERENCE = LIBRARY / "reference"
 TEXT_EXT = {".md", ".txt", ".py", ".js", ".ts", ".sh", ".c", ".cpp", ".java", ".json",
             ".yaml", ".yml", ".html", ".xml", ".csv"}
 MAX_BYTES = 400_000
@@ -99,7 +101,7 @@ def collect(source: Path) -> list[Path]:
 
 
 def existing_ids() -> set[str]:
-    return {p.stem for p in LIBRARY.glob("*.md")}
+    return {p.stem for p in LIBRARY.rglob("*.md")}
 
 
 def write_skill(path: Path, source: Path, tags: list[str], id_prefix: str,
@@ -141,10 +143,10 @@ def write_skill(path: Path, source: Path, tags: list[str], id_prefix: str,
         "---\n\n"
         + body.strip() + "\n"
     )
-    dest = LIBRARY / f"{base}.md"
+    dest = REFERENCE / f"{base}.md"
     print(f"  + {path} -> {dest.relative_to(ROOT)}")
     if not dry:
-        LIBRARY.mkdir(parents=True, exist_ok=True)
+        REFERENCE.mkdir(parents=True, exist_ok=True)
         dest.write_text(text, encoding="utf-8")
     return base
 

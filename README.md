@@ -79,7 +79,7 @@ agent/      解题能力层（纯库，不依赖 frontend/backend）：
   loop.py      Tool + run_loop + solve + flag 提取
   team.py      角色团队编排：团队长出计划 → 侦察 → 方向专家 → 报告员复盘
   skills.py    扁平技能库加载：索引 / 检索 / 工具化（search_role_skill）
-  skill_library/ 扁平技能库（每篇一个 md，frontmatter 带 id/name/description/tags）
+  skill_library/ 技能库，按 kind 分目录：methods/（技能＝角色方法）、reference/（参考知识＝导入资料）、harvested/（实战累积＝解题收割）
   config.py    模型/厂商配置（.env 回退） · sandbox.py run_python / run_command 沙箱
   evaluate.py  benchmark 循环 · offline.py 离线测试 helper
   taskbuilder.py  spec → 一次解题任务（工具 + prompt）
@@ -128,11 +128,14 @@ scripts/import_skills.py  把本地资料导入扁平技能库
 - 正文 120–6000 字符，结构为 触发信号 / 步骤 / 证据 / 坑
 - 没有新知识就跳过，不为了收割而收割
 
-### 技能库（扁平）
+### 技能库（按 kind 分目录）
 
 ```
-agent/skill_library/*.md     每篇一个技能，frontmatter: id / name / description / tags
+agent/skill_library/methods/    技能＝角色方法/策略卡（lead/recon/web… -method）
+agent/skill_library/reference/  参考知识＝导入的技术资料（Hello-CTF 等）
+agent/skill_library/harvested/  实战累积＝收割员从解题中攒的经验
 ```
+每篇一个 md，frontmatter: id / name / description / tags；kind 由所在子目录决定。
 
 - 角色用技能 **id** 或 **tag 选择器**（`tag:web`）绑定技能，不再有按角色的技能包目录
 - 系统 prompt 只放**紧凑索引**；角色通过 `search_role_skill(query)` 按需读取全文

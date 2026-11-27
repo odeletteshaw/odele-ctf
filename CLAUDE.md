@@ -30,8 +30,10 @@ agent/        解题能力层（纯库）
     sandbox.py python_tool() · http.py http_tool() · process.py process_tool()
     chat.py message_tool() · bin.py disassemble_tool()/run_binary_tool()
   knowledge/    技巧卡（按类别）+ search_knowledge 检索（待与 skill_library 合并，见 ROADMAP「待重构」）
-  skills.py     扁平技能库加载 / 检索 / search_role_skill 工具
-  skill_library/ 扁平技能库（每篇 md 带 id/name/description/tags）；角色用 skill id
+  skills.py     技能库加载 / 检索 / search_role_skill 工具（kind 由子目录决定）
+  skill_library/ 技能库，按 kind 分三个子目录：methods/（**技能**＝角色方法/策略卡）、
+                reference/（**参考知识**＝导入的技术资料）、harvested/（**实战累积**＝收割员
+                从解题中攒的经验）；每篇 md 带 id/name/description/tags；角色用 skill id
                 或 tag:xxx 绑定；Hello-CTF hc-skill 资料在此（CC BY-SA 4.0，见
                 NOTICE.md）；导入用 scripts/import_skills.py --source ... --tags ...
   categories/web/     Web 题型：HTTP 靶题

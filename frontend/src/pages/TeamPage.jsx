@@ -26,7 +26,13 @@ const KIND_META = {
   harvest: { label: '知识收割', color: 'success' },
   worker: { label: '通用', color: 'default' },
 }
-const KIND_LABEL = { method: '方法', reference: '资料' }
+const KIND_LABEL = { method: '技能', reference: '参考知识', harvested: '实战累积' }
+// Order and headers for grouping the skill library by kind.
+const KIND_GROUPS = [
+  ['method', '技能（方法 / 角色策略）'],
+  ['reference', '参考知识（导入资料）'],
+  ['harvested', '实战累积（解题收割）'],
+]
 
 function SkillPicker({ library, tags, value, onChange }) {
   const [q, setQ] = useState('')
@@ -52,16 +58,28 @@ function SkillPicker({ library, tags, value, onChange }) {
       <TextField size="small" fullWidth placeholder="搜索技能…" value={q}
         onChange={(e) => setQ(e.target.value)} sx={{ mb: 1 }} />
       <Box sx={{ maxHeight: 260, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1 }}>
-        {filtered.map((skill) => (
-          <FormControlLabel key={skill.id} sx={{ display: 'flex', mr: 0 }}
-            control={<Checkbox size="small" checked={value.includes(skill.id)}
-              onChange={() => toggle(skill.id)} />}
-            label={<Typography variant="body2" noWrap>{skill.name} · {skill.id}
-              <Typography component="span" variant="caption" color="text.secondary">
-                {skill.tags.length ? `（${skill.tags.join('/')}）` : ''}
+        {KIND_GROUPS.map(([kind, header]) => {
+          const group = filtered.filter((s) => (s.kind || 'reference') === kind)
+          if (!group.length) return null
+          return (
+            <Box key={kind} sx={{ mb: 0.5 }}>
+              <Typography variant="caption" color="text.secondary"
+                sx={{ display: 'block', mt: 0.5, fontWeight: 700 }}>
+                {header}（{group.length}）
               </Typography>
-            </Typography>} />
-        ))}
+              {group.map((skill) => (
+                <FormControlLabel key={skill.id} sx={{ display: 'flex', mr: 0 }}
+                  control={<Checkbox size="small" checked={value.includes(skill.id)}
+                    onChange={() => toggle(skill.id)} />}
+                  label={<Typography variant="body2" noWrap>{skill.name} · {skill.id}
+                    <Typography component="span" variant="caption" color="text.secondary">
+                      {skill.tags.length ? `（${skill.tags.join('/')}）` : ''}
+                    </Typography>
+                  </Typography>} />
+              ))}
+            </Box>
+          )
+        })}
         {extras.map((selector) => (
           <FormControlLabel key={selector} sx={{ display: 'flex', mr: 0 }}
             control={<Checkbox size="small" checked onChange={() => toggle(selector)} />}
