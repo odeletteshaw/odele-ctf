@@ -88,7 +88,10 @@ def _fallback_writeup(user: str, category: str, outputs: dict[str, str],
         f"### {node_id}\n{_render_trace(events, 2500) or '(无记录)'}"
         for node_id, events in traces.items() if node_id != "report"
     ) or "(无)"
-    conclusion = f"成功，平台确认的 flag：`{flag}`" if flag else "未取得平台确认的 flag。"
+    conclusion = (
+        f"本次执行拿到的候选 flag：`{flag}`（提交后由平台确认）"
+        if flag else "未取得候选 flag。"
+    )
     return (
         f"# 题解：{category} 任务\n\n"
         f"## 1. 题目与目标\n{user[:1200]}\n\n"
@@ -115,7 +118,8 @@ def _finalize_writeup(text: str, *, user: str, category: str,
             f"题目 / 用户命令：\n{user}\n\n"
             f"待整理内容：\n{text or '(空)'}\n\n"
             f"执行记录（证据）：\n{evidence}\n\n"
-            f"平台确认的 flag：{flag or '（未拿到）'}\n\n请按格式重写报告。"
+            f"本次执行拿到的候选 flag（提交后由平台确认）：{flag or '（未拿到）'}\n\n"
+            "请按格式重写报告；不要把候选说成平台已确认。"
         ),
         model=model,
     )
