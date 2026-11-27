@@ -177,6 +177,7 @@ class Controller:
 
     def manual_solve(self, spec: dict, title: str) -> int:
         spec = dict(spec)
+        spec["manual"] = True  # explicit marker: filed under the 手动解题 page
         spec.setdefault("team", load_team())
         session = self.manager.new_session(spec, title, spec.get("category", "web"))
         self._bump()

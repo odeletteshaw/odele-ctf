@@ -61,9 +61,9 @@ def session_to_dict(s: Session) -> dict:
         "category": s.category,
         "status": st.get("status"),
         "flag": st.get("flag"),
-        # Manual-solve tasks (started on the 手动解题 page) carry no platform challenge id;
-        # the console files them separately from autosolve/platform sessions.
-        "manual": not (s.spec or {}).get("platform_challenge_id"),
+        # Manual-solve tasks carry an explicit marker set by manual_solve; the console
+        # files them on the 手动解题 page, apart from autosolve/platform sessions.
+        "manual": bool((s.spec or {}).get("manual")),
         "created_at": _fmt_time(s.created_at),
         "created_ts": s.created_at or 0,
         "is_running": s.is_running(),
