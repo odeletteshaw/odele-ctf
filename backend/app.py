@@ -240,6 +240,23 @@ def set_team(body: dict):
     return {"ok": True, "count": saved}
 
 
+@app.get("/api/team/skills")
+def team_skills():
+    from agent.skills import skill_dirs, summary
+    out = []
+    for member in load_team():
+        role = member.get("role")
+        dirs: list = []
+        for direction in (member.get("directions") or [None]):
+            for path in skill_dirs(role, direction):
+                if path not in dirs:
+                    dirs.append(path)
+        info = summary(dirs)
+        out.append({"role": role, "name": member.get("name"),
+                    "count": info["count"], "skills": info["names"]})
+    return {"members": out}
+
+
 @app.get("/api/token-slots")
 def get_token_slots():
     return {"slots": load_slots(), "token_count": len(settings.tokens())}

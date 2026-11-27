@@ -31,6 +31,10 @@ agent/        解题能力层（纯库）
     sandbox.py python_tool() · http.py http_tool() · process.py process_tool()
     chat.py message_tool() · bin.py disassemble_tool()/run_binary_tool()
   knowledge/    技巧卡（按类别）+ search_knowledge 检索
+  skills.py     角色技能包加载 / 检索 / search_role_skill 工具
+  team_skills/  每角色技能包：_shared + lead/recon/reporter + experts/<方向>；
+                索引进 prompt、按需检索；Hello-CTF hc-skill 资料在此（CC BY-SA 4.0，
+                见 NOTICE.md）；导入用 scripts/import_skills.py
   categories/web/     Web 题型：HTTP 靶题
     agent.py       prompt + 工具组装（http_request + run_python）；origin 锁定
     challenges/    一题一文件；_harness.py 是共享 HTTP server，_common.py 是出题 helper
@@ -58,6 +62,9 @@ agent/        解题能力层（纯库）
   pwn/ai 因目标有状态而跳过）→ 方向专家（带着计划+侦察结果解题）→ 报告收集员（写题解与
   团队复盘）。手动与平台打题都走这条链；session 的 `role` 事件组成「团队复盘」时间线。
   注意：团队 ≠ 打题 token 分配（后者见 `backend/slots.py`）。
+- **角色技能包**（`agent/skills.py` + `agent/team_skills/`）：每角色一套 SKILL.md 与
+  references，系统 prompt 只放索引，用 `search_role_skill` 按需读取；侦察员工具白名单
+  见 `agent/team.py: RECON_TOOLS`。导入资料用 `scripts/import_skills.py`。
 
 ## 核心设计原则：工具是「能力」，不是「解法」
 

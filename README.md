@@ -79,6 +79,8 @@ backend/    控制台后端（数据库 + API，纯服务层）：
 agent/      解题能力层（纯库，不依赖 frontend/backend）：
   loop.py      Tool + run_loop + solve + flag 提取
   team.py      角色团队编排：团队长出计划 → 侦察 → 方向专家 → 报告员复盘
+  skills.py    角色技能包加载：索引 / 检索 / 工具化（search_role_skill）
+  team_skills/ 每角色技能包（SKILL.md + references/），见下方「角色技能包」
   config.py    模型/厂商配置（.env 回退） · sandbox.py run_python / run_command 沙箱
   evaluate.py  benchmark 循环 · offline.py 离线测试 helper
   taskbuilder.py  spec → 一次解题任务（工具 + prompt）
@@ -87,6 +89,7 @@ agent/      解题能力层（纯库，不依赖 frontend/backend）：
   knowledge/   技巧卡（按类别，供 search_knowledge 检索）
   categories/  七个题型，每个同构：agent.py（prompt + 工具组装）+ challenges/ +
                evaluate.py
+scripts/import_skills.py  把本地资料导入角色技能包
 ```
 
 ## 团队协作
@@ -100,6 +103,28 @@ agent/      解题能力层（纯库，不依赖 frontend/backend）：
 
 手动解题与平台自动打题都会走这套流程；session 详情页新增「团队复盘」标签，可看角色时间线。
 方向 → token 的分配拆到「Token 槽位」页（`backend/slots.py`），与团队角色是两套概念。
+
+### 角色技能包
+
+每个角色可以有自己的方法与资料包：
+
+```
+agent/team_skills/
+  _shared/                 所有角色共享（Hello-CTF 方向路由、分类总表）
+  lead/ recon/ reporter/   各角色 SKILL.md + references/
+  experts/_common/         所有专家共享的方法
+  experts/<direction>/     方向专家专属资料（web/crypto/misc/forensics/pwn/reverse/ai）
+```
+
+- 系统 prompt 只放**紧凑索引**；角色通过 `search_role_skill(query)` 按需读取全文
+- 团队长/报告员不能调工具，技能包会以「索引 + SKILL.md 正文」注入
+- 侦察员只用只读工具白名单（http_request/batch、download_file、run_python、
+  search_knowledge、triage/strings/disassemble），专家用完整工具集
+- 导入本地资料：
+  `python scripts/import_skills.py --role expert-web --source ~/sec-notes/web`
+  （支持 md/txt/代码/PDF；`--list` 查看现有包，`--dry-run` 预览）
+- 已导入 [Hello-CTF](https://github.com/ProbiusOfficial/Hello-CTF) 的 `docs/hc-skill`
+  资料（CC BY-SA 4.0），来源与许可见 `agent/team_skills/NOTICE.md`
 
 ## 设计原则
 

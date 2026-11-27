@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Paper, Typography, Button, Chip, Stack, Box, Alert } from '@mui/material'
+import { Paper, Typography, Button, Chip, Stack, Box, Alert, Tooltip } from '@mui/material'
 import SaveIcon from '@mui/icons-material/Save'
-import { getTeam, saveTeam } from '../api.js'
+import { getTeam, getTeamSkills, saveTeam } from '../api.js'
 
 const ROLE_LABEL = {
   lead: '团队长',
@@ -18,12 +18,16 @@ const ROLE_COLOR = {
 
 export default function TeamPage() {
   const [members, setMembers] = useState([])
+  const [skills, setSkills] = useState({})
   const [json, setJson] = useState('')
 
   const load = async () => {
-    const t = await getTeam()
+    const [t, s] = await Promise.all([getTeam(), getTeamSkills()])
     setMembers(t.members || [])
     setJson(JSON.stringify(t, null, 2))
+    const map = {}
+    for (const m of s.members || []) map[`${m.role}:${m.name}`] = m
+    setSkills(map)
   }
   useEffect(() => { load() }, [])
 
@@ -59,6 +63,10 @@ export default function TeamPage() {
                     {(m.directions || []).map((d) => (
                       <Chip key={d} size="small" label={d} variant="outlined" />
                     ))}
+                    <Tooltip title={(skills[`${m.role}:${m.name}`]?.skills || []).join('、') || '暂无技能资料'}>
+                      <Chip size="small" color="default" variant="outlined"
+                        label={`技能包 ${skills[`${m.role}:${m.name}`]?.count ?? 0} 篇`} />
+                    </Tooltip>
                   </Stack>
                   {m.description && (
                     <Typography variant="body2" color="text.secondary">{m.description}</Typography>

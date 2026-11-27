@@ -30,6 +30,7 @@ export const clearFailed = () => api('/api/config/clear_failed', { method: 'POST
 export const manualSolve = (spec, title) => api('/api/manual', { method: 'POST', body: JSON.stringify({ spec, title }) })
 export const getTeam = () => api('/api/team')
 export const saveTeam = (members) => api('/api/team', { method: 'POST', body: JSON.stringify({ members }) })
+export const getTeamSkills = () => api('/api/team/skills')
 export const getTokenSlots = () => api('/api/token-slots')
 export const saveTokenSlots = (slots) => api('/api/token-slots', { method: 'POST', body: JSON.stringify({ slots }) })
 

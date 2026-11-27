@@ -24,6 +24,7 @@ from agent.loop import (
     extract_flags,
     run_loop,
 )
+from agent.skills import briefing, index, role_skill_tool, skill_dirs
 
 LEAD = "lead"
 RECON = "recon"
@@ -32,6 +33,26 @@ REPORTER = "reporter"
 
 # Probing these destroys state the expert needs, so recon is skipped.
 SKIP_RECON = {"pwn", "ai"}
+
+# Recon is read-only-ish: no payload generators, no process/chat drivers, no code exec
+# beyond the sandbox. Exact tool names; unknown names are dropped safely.
+RECON_TOOLS = {
+    "http_request", "http_batch", "download_file", "run_python", "search_knowledge",
+    "triage", "strings", "disassemble",
+}
+
+
+def tools_for(role: str, tools: list[Tool], skill_tool: Tool | None) -> list[Tool]:
+    """Role tool whitelist: lead/reporter none, recon read-only subset, expert all."""
+    if role in (LEAD, REPORTER):
+        return []
+    if role == RECON:
+        picked = [tool for tool in tools if tool.name in RECON_TOOLS]
+    else:
+        picked = list(tools)
+    if skill_tool is not None:
+        picked.append(skill_tool)
+    return picked
 
 LEAD_SYSTEM = """你是 CTF 团队的团队长。你不直接解题，负责拆解题目、制定计划、分派侦察与解题。
 只输出一份简洁计划（最多 10 行），包含：
@@ -150,15 +171,25 @@ def run_team(
         raw_emit({"type": "agent", "role": role.get("role"), "name": role.get("name"),
                   "text": text})
 
-    tool_names = ", ".join(tool.name for tool in tools)
     direction = category
+
+    lead_dirs = skill_dirs(LEAD)
+    recon_dirs = skill_dirs(RECON)
+    expert_dirs = skill_dirs(EXPERT, direction)
+    reporter_dirs = skill_dirs(REPORTER)
+    lead_brief = briefing(lead_dirs)
+    reporter_brief = briefing(reporter_dirs)
+    recon_index = index(recon_dirs)
+    expert_index = index(expert_dirs)
 
     # ---- lead: plan --------------------------------------------------------
     lead = member(team, LEAD, direction)
     role_event(lead, "start")
     plan = complete(
-        LEAD_SYSTEM,
-        f"方向：{direction}\n可用工具：{tool_names}\n\n题目：\n{user}\n\n请给出团队计划。",
+        LEAD_SYSTEM + (f"\n\n[你的技能包]\n{lead_brief}" if lead_brief else ""),
+        f"方向：{direction}\n"
+        f"可用工具（侦察/专家）：{', '.join(tool.name for tool in tools)}\n\n"
+        f"题目：\n{user}\n\n请给出团队计划。",
         model=model,
     )
     if plan:
@@ -181,8 +212,14 @@ def run_team(
             f"题目：\n{user}\n\n团队长计划：\n{plan or '(none)'}\n\n"
             "请完成侦察，输出事实清单（附证据）。"
         )
+        recon_system = RECON_SYSTEM
+        if recon_index:
+            recon_system += (
+                "\n\n[角色技能索引] 需要细节时调用 search_role_skill(query)：\n" + recon_index
+            )
         recon_result = _expert_solve(
-            tools, f"{RECON_SYSTEM}\n\n[类别要求]\n{system}", recon_user,
+            tools_for(RECON, tools, role_skill_tool(recon_dirs)),
+            f"{recon_system}\n\n[类别要求]\n{system}", recon_user,
             model=model, max_turns=min(12, max_turns), on_event=recon_sink,
             guidance=None, flag_pattern=flag_pattern, persist=False,
             diagnostic=diagnostic,
@@ -215,8 +252,14 @@ def run_team(
             f"题目：\n{user}\n\n团队长计划：\n{plan or '(none)'}\n\n"
             f"侦察结果：\n{recon_text or '(无)'}\n\n请解题。"
         )
+        expert_system = f"{system}\n\n{role_note}"
+        if expert_index:
+            expert_system += (
+                "\n\n[角色技能索引] 需要细节时调用 search_role_skill(query)：\n" + expert_index
+            )
         result = _expert_solve(
-            tools, f"{system}\n\n{role_note}", expert_user,
+            tools_for(EXPERT, tools, role_skill_tool(expert_dirs)),
+            expert_system, expert_user,
             model=model, max_turns=max_turns, on_event=expert_sink,
             guidance=guidance, flag_pattern=flag_pattern, persist=persist,
             diagnostic=diagnostic,
@@ -227,7 +270,7 @@ def run_team(
     reporter = member(team, REPORTER, direction)
     role_event(reporter, "start")
     report = complete(
-        REPORTER_SYSTEM,
+        REPORTER_SYSTEM + (f"\n\n[你的技能包]\n{reporter_brief}" if reporter_brief else ""),
         (
             f"题目：\n{user}\n\n团队长计划：\n{plan or '(none)'}\n\n"
             f"侦察结果：\n{recon_text or '(无)'}\n\n"
