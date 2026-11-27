@@ -163,7 +163,7 @@ export default function CtfPage() {
         </Button>
         <Button color="error" startIcon={<DeleteSweepIcon />} onClick={() => batchDelete().then(refresh)}>批量删除失败</Button>
         <Typography variant="body2" color="text.secondary">
-          显示 {visible.length} / {sessions.length} 个 session{slotText ? ` · ${slotText}` : ''}
+          显示 {visible.length} / {sessions.length} 个任务{slotText ? ` · ${slotText}` : ''}
         </Typography>
       </Stack>
 

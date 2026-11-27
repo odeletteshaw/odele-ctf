@@ -144,37 +144,6 @@ def delete_session(session_id: int):
     return {"ok": True}
 
 
-@app.get("/api/calls")
-def calls(limit: int = 20):
-    """Team communication threads for recent sessions (messages + @mentions)."""
-    out = []
-    limit = max(1, min(limit, 50))
-    for session in sorted(manager.sessions, key=lambda item: item.id, reverse=True):
-        if not getattr(session, "_loaded", False):
-            continue
-        state = session.state
-        messages = state.get("messages") or []
-        mentions = state.get("mentions") or []
-        if not messages and not mentions and state.get("status") not in ("running", "preparing"):
-            continue
-        out.append({
-            "id": session.id,
-            "title": session.title,
-            "category": session.category,
-            "status": state.get("status"),
-            "is_running": session.is_running(),
-            "messages": messages[-200:],
-            "mentions": mentions,
-            "pending_mentions": sum(1 for m in mentions if m.get("status") == "pending"),
-            "pending_approvals": [
-                a for a in (state.get("approvals") or []) if a.get("status") == "pending"
-            ],
-        })
-        if len(out) >= limit:
-            break
-    return {"sessions": out}
-
-
 @app.post("/api/sessions/{session_id}/guidance")
 def send_guidance(session_id: int, body: dict):
     text = str(body.get("text") or "")
@@ -217,16 +186,6 @@ def retry_session(session_id: int):
 def batch_delete():
     n = controller.batch_delete()
     return {"deleted": n}
-
-
-@app.get("/api/memories")
-def list_memories():
-    return manager.list_memories()
-
-
-@app.get("/api/memories/search")
-def search_memories(q: str = ""):
-    return manager.search_memories(q)
 
 
 @app.get("/api/config")

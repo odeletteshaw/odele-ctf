@@ -19,8 +19,6 @@ export const deleteSession = (id) => api(`/api/sessions/${id}/delete`, { method:
 export const retrySession = (id) => api(`/api/sessions/${id}/retry`, { method: 'POST' })
 export const batchDelete = () => api('/api/sessions/batch_delete', { method: 'POST' })
 
-export const listMemories = () => api('/api/memories')
-export const searchMemories = (q) => api(`/api/memories/search?q=${encodeURIComponent(q)}`)
 export const getConfig = () => api('/api/config')
 export const updateConfig = (body) => api('/api/config', { method: 'PUT', body: JSON.stringify(body) })
 export const listTokens = () => api('/api/tokens')
@@ -38,7 +36,6 @@ export const deleteTeamRole = (id) => api(`/api/team/roles/${encodeURIComponent(
 export const getLibrarySkill = (id) => api(`/api/skills/${encodeURIComponent(id)}`)
 export const approveSession = (id, node, approved) =>
   api(`/api/sessions/${id}/approve`, { method: 'POST', body: JSON.stringify({ node, approved }) })
-export const getCalls = () => api('/api/calls')
 export const sendGuidance = (id, text) =>
   api(`/api/sessions/${id}/guidance`, { method: 'POST', body: JSON.stringify({ text }) })
 export const sendReply = (id, text) =>

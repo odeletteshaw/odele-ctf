@@ -68,8 +68,8 @@ agent/        解题能力层（纯库）
   `harvest_skill` 强制防冗杂（一题≤2 张、去重、禁 flag/目标域名、标签白名单、不改旧卡）。
 - **团队通话**：run_team 发出 `message` 事件（团队长计划 / 分派 / 角色结果），manager 存到
   session.state.messages；每个节点工具集里都有 `ask_user`，角色可 @ 用户并阻塞等待
-  `/api/sessions/{id}/reply`，用户也可发 `/guidance`。通话页 `/api/calls` 聚合最近会话的
-  消息与 @mention；原来的记忆检索页改名为「记忆池」。
+  `/api/sessions/{id}/reply`，用户也可发 `/guidance`。通话只存在于任务详情页（不再有独立的
+  通话/团队复盘页面）；记忆池仍供 agent 检索，但暂无可视化页面。
 - **技能库**（`agent/skills.py` + `agent/skill_library/`）：扁平库，每篇 md 带
   id/name/description/tags；角色绑定 skill id 或 `tag:xxx`，索引进 prompt、用
   `search_role_skill` 按需读取；导入资料用 `scripts/import_skills.py`。
