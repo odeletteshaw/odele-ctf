@@ -225,6 +225,10 @@ export default function CtfPage() {
                       <Chip size="small" color="warning" sx={{ ml: 0.5 }}
                         label={`待审批 ${s.pending_approvals}`} />
                     )}
+                    {s.pending_mentions > 0 && (
+                      <Chip size="small" color="info" sx={{ ml: 0.5 }}
+                        label={`@你 ${s.pending_mentions}`} />
+                    )}
                   </TableCell>
                   <TableCell color="text.secondary">{s.created_at || '—'}</TableCell>
                   <TableCell>

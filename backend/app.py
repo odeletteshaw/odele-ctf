@@ -68,6 +68,9 @@ def session_to_dict(s: Session) -> dict:
         "pending_approvals": sum(
             1 for a in (st.get("approvals") or []) if a.get("status") == "pending"
         ),
+        "pending_mentions": sum(
+            1 for m in (st.get("mentions") or []) if m.get("status") == "pending"
+        ),
     }
 
 
@@ -82,6 +85,8 @@ def session_detail_to_dict(s: Session) -> dict:
         "writeup": st.get("writeup", ""),
         "roles": st.get("roles", []),
         "approvals": st.get("approvals", []),
+        "messages": st.get("messages", []),
+        "mentions": st.get("mentions", []),
         "transcript": s.transcript,
     })
     return d
@@ -136,6 +141,57 @@ def stop_session(session_id: int):
 @app.post("/api/sessions/{session_id}/delete")
 def delete_session(session_id: int):
     controller.delete_session(session_id)
+    return {"ok": True}
+
+
+@app.get("/api/calls")
+def calls(limit: int = 20):
+    """Team communication threads for recent sessions (messages + @mentions)."""
+    out = []
+    limit = max(1, min(limit, 50))
+    for session in sorted(manager.sessions, key=lambda item: item.id, reverse=True):
+        if not getattr(session, "_loaded", False):
+            continue
+        state = session.state
+        messages = state.get("messages") or []
+        mentions = state.get("mentions") or []
+        if not messages and not mentions and state.get("status") not in ("running", "preparing"):
+            continue
+        out.append({
+            "id": session.id,
+            "title": session.title,
+            "category": session.category,
+            "status": state.get("status"),
+            "is_running": session.is_running(),
+            "messages": messages[-200:],
+            "mentions": mentions,
+            "pending_mentions": sum(1 for m in mentions if m.get("status") == "pending"),
+            "pending_approvals": [
+                a for a in (state.get("approvals") or []) if a.get("status") == "pending"
+            ],
+        })
+        if len(out) >= limit:
+            break
+    return {"sessions": out}
+
+
+@app.post("/api/sessions/{session_id}/guidance")
+def send_guidance(session_id: int, body: dict):
+    text = str(body.get("text") or "")
+    if not text.strip():
+        return JSONResponse({"error": "text is required"}, status_code=400)
+    if not controller.guidance_session(session_id, text):
+        return JSONResponse({"error": "session not found"}, status_code=404)
+    return {"ok": True}
+
+
+@app.post("/api/sessions/{session_id}/reply")
+def reply_session(session_id: int, body: dict):
+    text = str(body.get("text") or "")
+    if not text.strip():
+        return JSONResponse({"error": "text is required"}, status_code=400)
+    if not controller.reply_session(session_id, text):
+        return JSONResponse({"error": "session not found"}, status_code=404)
     return {"ok": True}
 
 

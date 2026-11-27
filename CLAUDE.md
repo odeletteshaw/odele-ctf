@@ -66,6 +66,10 @@ agent/        解题能力层（纯库）
   使用的 token，方向在所选 token 间轮转；token 在配置页维护。
 - **知识收割**（`agent/harvest.py`，kind=harvest）：团队长仅在出现可复用新知识时安排；
   `harvest_skill` 强制防冗杂（一题≤2 张、去重、禁 flag/目标域名、标签白名单、不改旧卡）。
+- **团队通话**：run_team 发出 `message` 事件（团队长计划 / 分派 / 角色结果），manager 存到
+  session.state.messages；每个节点工具集里都有 `ask_user`，角色可 @ 用户并阻塞等待
+  `/api/sessions/{id}/reply`，用户也可发 `/guidance`。通话页 `/api/calls` 聚合最近会话的
+  消息与 @mention；原来的记忆检索页改名为「记忆池」。
 - **技能库**（`agent/skills.py` + `agent/skill_library/`）：扁平库，每篇 md 带
   id/name/description/tags；角色绑定 skill id 或 `tag:xxx`，索引进 prompt、用
   `search_role_skill` 按需读取；导入资料用 `scripts/import_skills.py`。

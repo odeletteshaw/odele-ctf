@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   Paper, Typography, Box, Stack, Chip, Button, IconButton, Tooltip, Alert,
   Tabs, Tab, Divider, List, ListItem, ListItemText,
@@ -122,6 +122,13 @@ export default function SessionPage() {
             }>
             <Typography variant="subtitle2">{a.role} 请求审批 · 节点 {a.node}</Typography>
             <Typography variant="body2">{a.task || '（无任务说明）'}</Typography>
+          </Alert>
+        ))}
+        {(session.mentions || []).filter((m) => m.status === 'pending').map((m) => (
+          <Alert key={m.node} severity="info" sx={{ mt: 1.5 }}
+            action={<Button size="small" component={Link} to="/calls">去通话页回复</Button>}>
+            <Typography variant="subtitle2">{m.from} @ 你 · 节点 {m.node}</Typography>
+            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{m.text}</Typography>
           </Alert>
         ))}
         {error && <Alert severity="error" sx={{ mt: 1.5 }}>{error}</Alert>}

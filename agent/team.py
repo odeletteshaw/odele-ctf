@@ -149,6 +149,35 @@ def _topo(nodes: list[dict]) -> list[dict]:
     return order
 
 
+def _ask_user_tool(callback, member: dict, node: dict) -> Tool:
+    def handler(args: dict[str, Any]) -> str:
+        question = str(args.get("question") or "").strip()
+        if not question:
+            return "Error: 'question' is required."
+        if callback is None:
+            return "No user is attached to this run; proceed with best effort and state assumptions."
+        return callback({"from": member.get("name") or member.get("id"),
+                         "node": node.get("id"), "text": question})
+
+    return Tool(
+        name="ask_user",
+        description=(
+            "Ask the human for missing information or a decision. This BLOCKS until the user "
+            "replies on the Calls page (or times out). Use it only when genuinely blocked: "
+            "需要题解/资料/凭据/业务信息，或在两个方案间需要拍板。State exactly what you need."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "question": {"type": "string",
+                             "description": "What you need from the user, with why it matters."},
+            },
+            "required": ["question"],
+        },
+        handler=handler,
+    )
+
+
 def _run_node(
     tools: list[Tool],
     system: str,
@@ -163,11 +192,13 @@ def _run_node(
     guidance: GuidanceFn | None,
     flag_pattern,
     diagnostic: str | None,
+    ask_user: Callable[[dict], str] | None = None,
 ) -> SolveResult:
     entries = resolve(member.get("skills"))
     skill_index = index(entries)
     skill_tool = role_skill_tool(entries)
     node_tools = list(tools) + ([skill_tool] if skill_tool else [])
+    node_tools.append(_ask_user_tool(ask_user, member, node))
 
     role_system = (
         f"{system}\n\n[团队协作] 你是 {member.get('name') or member.get('id')}。"
@@ -220,6 +251,7 @@ def run_team(
     persist: bool = False,
     diagnostic: str | None = None,
     approve: Callable[[dict], bool] | None = None,
+    ask_user: Callable[[dict], str] | None = None,
 ) -> TeamOutcome:
     raw_emit = on_event or (lambda event: None)
     timeline: list[dict[str, Any]] = []
@@ -273,6 +305,8 @@ def run_team(
     if plan_text:
         raw_emit({"type": "agent", "role": "lead", "name": lead.get("name"),
                   "text": plan_text})
+        raw_emit({"type": "message", "from": lead.get("name"), "to": "团队",
+                  "kind": "plan", "node": "plan", "text": plan_text})
     summary, raw_nodes = _parse_plan(plan_text)
     nodes = _clean_nodes(raw_nodes, workers)
     if not nodes:
@@ -317,6 +351,9 @@ def run_team(
                 continue
 
         role_event(member, node["id"], "start", node["task"])
+        raw_emit({"type": "message", "from": lead.get("name"),
+                  "to": member.get("name") or member.get("id"), "kind": "assignment",
+                  "node": node["id"], "text": node["task"]})
         node_events: list[dict[str, Any]] = []
         sink = scoped(member, node["id"])
 
@@ -329,10 +366,14 @@ def run_team(
             member=member, node=node, dep_outputs=outputs,
             model=model, max_turns=max_turns, on_event=node_sink,
             guidance=guidance, flag_pattern=flag_pattern, diagnostic=diagnostic,
+            ask_user=ask_user,
         )
         total_calls += node_result.tool_calls
         outputs[node["id"]] = node_result.final_text
         role_event(member, node["id"], "end", _summary_text(node_result.final_text))
+        raw_emit({"type": "message", "from": member.get("name") or member.get("id"),
+                  "to": "团队", "kind": "result", "node": node["id"],
+                  "text": _summary_text(node_result.final_text, 800)})
         if node_result.flag and (result is None or not result.flag):
             result = node_result
         if member.get("kind") == "reporter" and not report:

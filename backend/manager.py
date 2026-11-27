@@ -37,6 +37,8 @@ def fresh_state() -> dict[str, Any]:
         "writeup": "",
         "roles": [],
         "approvals": [],
+        "messages": [],
+        "mentions": [],
         "done": False,
     }
 
@@ -59,6 +61,7 @@ class Session:
         self.events: Any = _CTX.Queue()
         self._guidance: Any = _CTX.Queue()
         self._approvals: Any = _CTX.Queue()
+        self._replies: Any = _CTX.Queue()
         self._proc: Any = None  # created in start()
         self.started_at: float | None = None
         self.created_at: float | None = time.time()
@@ -80,7 +83,7 @@ class Session:
     def start(self) -> None:
         self._proc = _CTX.Process(
             target=worker_main,
-            args=(self.spec, self.events, self._guidance, self._approvals),
+            args=(self.spec, self.events, self._guidance, self._approvals, self._replies),
             daemon=True,
         )
         self.started_at = time.time()
@@ -103,6 +106,7 @@ class Session:
         self.events = _CTX.Queue()
         self._guidance = _CTX.Queue()
         self._approvals = _CTX.Queue()
+        self._replies = _CTX.Queue()
         self._proc = None
         self.started_at = None
         self.transcript = []
@@ -113,6 +117,12 @@ class Session:
         text = text.strip()
         if text:
             self._guidance.put(text)
+
+    def reply(self, text: str) -> None:
+        """Answer a role's @mention (the ask_user tool blocks until this arrives)."""
+        text = text.strip()
+        if text and self._replies is not None:
+            self._replies.put(text)
 
     def approve(self, node_id: str, approved: bool) -> None:
         """Resolve a pending DAG-node approval for the worker process."""
@@ -175,6 +185,30 @@ class Session:
                 "summary": event.get("summary", ""),
             })
             del roles[:-60]  # keep the timeline bounded
+        elif kind == "message":
+            messages = self.state.setdefault("messages", [])
+            messages.append({
+                "from": event.get("from"),
+                "to": event.get("to"),
+                "text": event.get("text", ""),
+                "node": event.get("node"),
+                "kind": event.get("kind"),
+                "ts": event.get("ts"),
+            })
+            del messages[:-200]
+        elif kind == "mention":
+            mentions = self.state.setdefault("mentions", [])
+            node = event.get("node")
+            if event.get("status") == "pending":
+                mentions.append({"node": node, "from": event.get("from"),
+                                 "text": event.get("text", ""), "status": "pending"})
+            else:
+                for item in reversed(mentions):
+                    if item.get("node") == node and item.get("status") == "pending":
+                        item["status"] = event.get("status")
+                        item["reply"] = event.get("reply", "")
+                        break
+            del mentions[:-40]
         elif kind == "approval":
             approvals = self.state.setdefault("approvals", [])
             node = event.get("node")
@@ -198,6 +232,7 @@ class Session:
         s.events = None
         s._guidance = None
         s._approvals = None
+        s._replies = None
         s._proc = None
         s.started_at = None
         s.created_at = created_at

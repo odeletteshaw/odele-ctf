@@ -98,6 +98,38 @@ class Controller:
             self.manager.stop(s)
             self._bump()
 
+    def guidance_session(self, session_id: int, text: str) -> bool:
+        session = self.get_session(session_id)
+        if session is None:
+            return False
+        text = text.strip()
+        if not text:
+            return False
+        session.send_guidance(text)
+        session.state.setdefault("messages", []).append({
+            "from": "你", "to": "团队", "kind": "user", "node": None, "text": text,
+        })
+        session.state["messages"] = session.state["messages"][-200:]
+        self.manager.save()
+        self._bump()
+        return True
+
+    def reply_session(self, session_id: int, text: str) -> bool:
+        session = self.get_session(session_id)
+        if session is None:
+            return False
+        text = text.strip()
+        if not text:
+            return False
+        session.reply(text)
+        session.state.setdefault("messages", []).append({
+            "from": "你", "to": "团队", "kind": "user", "node": None, "text": text,
+        })
+        session.state["messages"] = session.state["messages"][-200:]
+        self.manager.save()
+        self._bump()
+        return True
+
     def approve_session(self, session_id: int, node: str, approved: bool) -> bool:
         """Resolve a DAG-node approval request from the console."""
         session = self.get_session(session_id)

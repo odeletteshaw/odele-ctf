@@ -13,7 +13,11 @@ export default function MemoriesPage() {
   useEffect(() => { load('') }, [])
 
   return (
-    <Box>
+    <Box sx={{ minHeight: 'calc(100vh - 112px)' }}>
+      <Typography variant="h6">记忆池</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+        自动保存的题解 / 复盘检索池（团队之间的实时消息在「通话」页）。
+      </Typography>
       <TextField
         fullWidth size="small" placeholder="搜索记忆池…" value={q}
         onChange={(e) => setQ(e.target.value)}

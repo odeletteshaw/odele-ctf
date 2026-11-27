@@ -38,5 +38,10 @@ export const deleteTeamRole = (id) => api(`/api/team/roles/${encodeURIComponent(
 export const getLibrarySkill = (id) => api(`/api/skills/${encodeURIComponent(id)}`)
 export const approveSession = (id, node, approved) =>
   api(`/api/sessions/${id}/approve`, { method: 'POST', body: JSON.stringify({ node, approved }) })
+export const getCalls = () => api('/api/calls')
+export const sendGuidance = (id, text) =>
+  api(`/api/sessions/${id}/guidance`, { method: 'POST', body: JSON.stringify({ text }) })
+export const sendReply = (id, text) =>
+  api(`/api/sessions/${id}/reply`, { method: 'POST', body: JSON.stringify({ text }) })
 
 export default api

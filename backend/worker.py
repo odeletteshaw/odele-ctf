@@ -18,7 +18,7 @@ from agent.team import run_team  # noqa: E402
 
 
 def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any,
-                approvals_q: Any = None) -> None:
+                approvals_q: Any = None, replies_q: Any = None) -> None:
     events_log: list[dict[str, Any]] = []
 
     def on_event(event: dict[str, Any]) -> None:
@@ -55,6 +55,23 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any,
         max_turns = int(spec.get("max_turns", 100))
         report = ""
         if spec.get("team"):
+            def ask_user_callback(request: dict[str, Any]) -> str:
+                """Emit an @mention and block until the user replies on the Calls page."""
+                if replies_q is None:
+                    return "No user is attached to this run; proceed with best effort."
+                events_q.put({"type": "mention", "status": "pending", **request})
+                deadline = time.time() + 600
+                while time.time() < deadline:
+                    try:
+                        text = replies_q.get(timeout=1)
+                    except Exception:
+                        continue
+                    events_q.put({"type": "mention", "status": "answered",
+                                  "reply": text, **request})
+                    return text
+                events_q.put({"type": "mention", "status": "timeout", **request})
+                return "No reply from the user (timeout); proceed with best effort and state assumptions."
+
             def approve_request(request: dict[str, Any]) -> bool:
                 """Block until the user approves/rejects this DAG node (or time out)."""
                 if approvals_q is None:
@@ -77,7 +94,7 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any,
                 model=spec.get("model"), max_turns=max_turns,
                 on_event=on_event, guidance=guidance, flag_pattern=pattern,
                 persist=(spec.get("kind") == "custom"), diagnostic=diagnostic,
-                approve=approve_request,
+                approve=approve_request, ask_user=ask_user_callback,
             )
             result = outcome.result
             report = outcome.report
