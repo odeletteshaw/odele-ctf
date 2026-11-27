@@ -108,6 +108,7 @@ export default function CtfPage() {
     const needle = q.trim().toLowerCase()
     return sessions
       .filter((s) => {
+        if (s.manual) return false  // manual-solve tasks live on the 手动解题 page
         if (statusFilter !== 'all' && s.status !== statusFilter) return false
         if (catFilter !== 'all' && s.category !== catFilter) return false
         if (!needle) return true
