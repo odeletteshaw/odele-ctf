@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from backend.controller import Controller
 from backend.manager import Manager, Session
 from backend.settings import apply_model_settings, settings
+from backend.slots import load_slots, save_slots
 from backend.team import load_team, save_team
 
 manager = Manager()
@@ -77,6 +78,7 @@ def session_detail_to_dict(s: Session) -> dict:
         "paths": st.get("paths", []),
         "tools_used": st.get("tools_used", {}),
         "writeup": st.get("writeup", ""),
+        "roles": st.get("roles", []),
         "transcript": s.transcript,
     })
     return d
@@ -230,9 +232,27 @@ def set_team(body: dict):
     members = body.get("members")
     if not isinstance(members, list):
         return JSONResponse({"error": "members must be a list"}, status_code=400)
-    save_team(members)
+    saved = save_team(members)
+    if not saved:
+        return JSONResponse({"error": "没有有效成员（role 需为 lead/recon/expert/reporter）"},
+                            status_code=400)
     controller.notify_changed()
-    return {"ok": True}
+    return {"ok": True, "count": saved}
+
+
+@app.get("/api/token-slots")
+def get_token_slots():
+    return {"slots": load_slots(), "token_count": len(settings.tokens())}
+
+
+@app.post("/api/token-slots")
+def set_token_slots(body: dict):
+    slots = body.get("slots")
+    if not isinstance(slots, dict):
+        return JSONResponse({"error": "slots must be an object"}, status_code=400)
+    save_slots(slots)
+    controller.notify_changed()
+    return {"slots": load_slots()}
 
 
 # ---- WebSocket ------------------------------------------------------------

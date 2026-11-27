@@ -342,6 +342,36 @@ def run_loop(
     return final_text, tool_calls
 
 
+def chat_fn(model: str | None = None) -> ChatFn:
+    """A tool-capable chat function against the configured provider."""
+    client = OpenAI(base_url=config.API_BASE, api_key=config.API_KEY,
+                    max_retries=config.API_RETRIES)
+    return _openai_chat_fn(client, model or config.DEFAULT_MODEL)
+
+
+def complete(system: str, user: str, model: str | None = None) -> str:
+    """One plain tool-less completion (planning / reporting). "" on failure."""
+    if not config.API_KEY:
+        return ""
+    client = OpenAI(base_url=config.API_BASE, api_key=config.API_KEY,
+                    max_retries=config.API_RETRIES)
+    started = time.time()
+    try:
+        response = client.chat.completions.create(
+            model=model or config.DEFAULT_MODEL,
+            messages=[{"role": "system", "content": system},
+                      {"role": "user", "content": user}],
+            temperature=0, timeout=config.API_TIMEOUT,
+        )
+    except Exception as error:  # a failed plan/report must not kill the solve
+        print(f"[complete] failed: {error}", flush=True)
+        return ""
+    elapsed = time.time() - started
+    if elapsed > 30:
+        print(f"[slow] completion took {elapsed:.0f}s", flush=True)
+    return (response.choices[0].message.content or "").strip()
+
+
 def _openai_chat_fn(client: OpenAI, model: str) -> ChatFn:
     def chat(messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> Any:
         started = time.time()

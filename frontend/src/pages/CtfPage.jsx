@@ -220,11 +220,14 @@ export default function CtfPage() {
         <DialogTitle>开始打题</DialogTitle>
         <DialogContent>
           <Typography variant="subtitle2" sx={{ mb: 1 }}>方向（多选）</Typography>
-          <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+          <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
             {DIRS.map((d) => (
               <FormControlLabel key={d} control={<Checkbox checked={!!dirs[d]} onChange={(e) => setDirs({ ...dirs, [d]: e.target.checked })} />} label={d} />
             ))}
           </Stack>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            将以角色团队执行：团队长拆解 → 信息收集员侦察 → 方向专家解题 → 报告收集员复盘。
+          </Typography>
           <TextField select fullWidth label="难度" value={diff} onChange={(e) => setDiff(e.target.value)} sx={{ mb: 2 }}>
             <MenuItem value="">不限</MenuItem><MenuItem value="简单">简单</MenuItem><MenuItem value="中等">中等</MenuItem><MenuItem value="困难">困难</MenuItem>
           </TextField>
@@ -247,12 +250,23 @@ export default function CtfPage() {
                 FLAG {detail.flag || '—'}
               </Typography>
               <Tabs value={tab} onChange={(e, v) => setTab(v)} sx={{ mt: 1 }}>
-                <Tab label="Findings" /><Tab label="Thinking" /><Tab label="题解" />
+                <Tab label="Findings" /><Tab label="Thinking" /><Tab label="题解" /><Tab label="团队复盘" />
               </Tabs>
               <Box sx={{ mt: 1, whiteSpace: 'pre-wrap', fontFamily: 'Menlo,monospace', fontSize: 13, maxHeight: 420, overflow: 'auto' }}>
                 {tab === 0 ? (detail.paths || []).map((p) => `- ${p}`).join('\n') || '—'
                   : tab === 1 ? (detail.thinking || '—')
-                  : (detail.writeup || '（未生成）')}
+                  : tab === 2 ? (detail.writeup || '（未生成）')
+                  : (
+                    <Box sx={{ fontFamily: 'inherit', whiteSpace: 'normal' }}>
+                      {(detail.roles || []).map((r, i) => (
+                        <Box key={i} sx={{ mb: 1 }}>
+                          <Chip size="small" label={`${r.name || r.role} · ${r.status || ''}`} sx={{ mr: 1 }} />
+                          {r.summary && <span>{r.summary}</span>}
+                        </Box>
+                      ))}
+                      {!(detail.roles || []).length && '—'}
+                    </Box>
+                  )}
               </Box>
             </DialogContent>
             <DialogActions><Button onClick={() => setDetail(null)}>关闭</Button></DialogActions>

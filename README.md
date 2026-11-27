@@ -74,9 +74,11 @@ backend/    控制台后端（数据库 + API，纯服务层）：
   settings.py  配置存取（tokens / 团队 / 模型），API 只返回打码值
   manager.py   session 生命周期 · controller.py autosolve / retry 编排
   worker.py    解题子进程入口 · platform.py CTF2 REST 客户端
-  autosolve.py 平台题 → spec · team.py 方向 → agent 分工
+  autosolve.py 平台题 → spec · team.py 角色团队配置（团队长/侦察/专家/报告）
+  slots.py     打题 Token 槽位（方向 → 第几个 token）
 agent/      解题能力层（纯库，不依赖 frontend/backend）：
   loop.py      Tool + run_loop + solve + flag 提取
+  team.py      角色团队编排：团队长出计划 → 侦察 → 方向专家 → 报告员复盘
   config.py    模型/厂商配置（.env 回退） · sandbox.py run_python / run_command 沙箱
   evaluate.py  benchmark 循环 · offline.py 离线测试 helper
   taskbuilder.py  spec → 一次解题任务（工具 + prompt）
@@ -86,6 +88,18 @@ agent/      解题能力层（纯库，不依赖 frontend/backend）：
   categories/  七个题型，每个同构：agent.py（prompt + 工具组装）+ challenges/ +
                evaluate.py
 ```
+
+## 团队协作
+
+控制台的「团队」是**角色团队**，不是打题 token 分配：
+
+- **团队长**：读题、拆任务、出计划并分派
+- **信息收集员**：用该题型的工具摸清目标（接口、参数、技术栈、泄露线索），输出带证据的事实清单；pwn / ai 这类有状态目标跳过侦察，避免破坏现场
+- **攻防专家**：按方向匹配（web / crypto / misc / forensics / pwn / reverse / ai 各一个），带着计划与侦察结果解题
+- **报告收集员**：写中文题解 + 团队复盘（分工、关键发现、利用链、成败原因）
+
+手动解题与平台自动打题都会走这套流程；session 详情页新增「团队复盘」标签，可看角色时间线。
+方向 → token 的分配拆到「Token 槽位」页（`backend/slots.py`），与团队角色是两套概念。
 
 ## 设计原则
 

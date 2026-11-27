@@ -26,7 +26,10 @@ export default function ManualPage() {
 
   return (
     <Paper sx={{ p: 3, maxWidth: 640 }}>
-      <Typography variant="h6" sx={{ mb: 2 }}>手动解题</Typography>
+      <Typography variant="h6" sx={{ mb: 0.5 }}>手动解题</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        将以角色团队执行：团队长拆解 → 信息收集员侦察 → 方向专家解题 → 报告收集员复盘。
+      </Typography>
       <TextField select fullWidth label="方向" value={direction} onChange={(e) => setDirection(e.target.value)} sx={{ mb: 2 }}>
         <MenuItem value="web">web</MenuItem><MenuItem value="crypto">crypto</MenuItem><MenuItem value="forensics">forensics</MenuItem>
       </TextField>

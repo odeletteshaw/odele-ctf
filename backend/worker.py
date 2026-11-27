@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agent.loop import generate_writeup, solve  # noqa: E402
 from agent.taskbuilder import build_task  # noqa: E402
+from agent.team import run_team  # noqa: E402
 
 
 def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any) -> None:
@@ -49,16 +50,30 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any) -> None:
         events_q.put({"type": "status", "status": "running"})
         # The GUI passes a per-session turn budget (default 100). Custom targets also get
         # persist=True so the agent keeps going on text without a flag.
-        result = solve(tools, system, user, on_event=on_event, guidance=guidance,
-                       flag_pattern=pattern, persist=(spec.get("kind") == "custom"),
-                       max_turns=int(spec.get("max_turns", 100)), diagnostic=diagnostic)
+        max_turns = int(spec.get("max_turns", 100))
+        report = ""
+        if spec.get("team"):
+            # Role team: lead plans, recon collects, the direction expert solves, the
+            # reporter writes the review (emitted as a writeup event).
+            outcome = run_team(
+                tools, system, user, team=spec["team"], category=category,
+                model=spec.get("model"), max_turns=max_turns,
+                on_event=on_event, guidance=guidance, flag_pattern=pattern,
+                persist=(spec.get("kind") == "custom"), diagnostic=diagnostic,
+            )
+            result = outcome.result
+            report = outcome.report
+        else:
+            result = solve(tools, system, user, on_event=on_event, guidance=guidance,
+                           flag_pattern=pattern, persist=(spec.get("kind") == "custom"),
+                           max_turns=max_turns, diagnostic=diagnostic)
         if known_flag is not None:
             status = "solved" if result.flag == known_flag else "failed"
         else:
             status = "solved" if result.flag else "done"  # custom: can't verify, just report
         events_q.put({"type": "status", "status": status, "flag": result.flag})
         # After a solve, synthesize a writeup so the console can show a human-readable 题解.
-        if status == "solved":
+        if status == "solved" and not report:
             writeup = generate_writeup(user, events_log, result.flag)
             if writeup:
                 events_q.put({"type": "writeup", "text": writeup})

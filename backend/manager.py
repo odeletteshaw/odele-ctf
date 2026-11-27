@@ -35,6 +35,7 @@ def fresh_state() -> dict[str, Any]:
         "paths": [],
         "tools_used": {},
         "writeup": "",
+        "roles": [],
         "done": False,
     }
 
@@ -154,6 +155,15 @@ class Session:
                 self.state["flag"] = event["flag"]
         elif kind == "writeup":
             self.state["writeup"] = event.get("text", "")
+        elif kind == "role":
+            roles = self.state.setdefault("roles", [])
+            roles.append({
+                "role": event.get("role"),
+                "name": event.get("name"),
+                "status": event.get("status"),
+                "summary": event.get("summary", ""),
+            })
+            del roles[:-60]  # keep the timeline bounded
 
     @classmethod
     def from_row(cls, row: tuple) -> "Session":

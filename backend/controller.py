@@ -14,7 +14,8 @@ from backend.autosolve import PLATFORM_CATEGORY, prepare_challenge
 from backend.manager import Manager, Session
 from backend.platform import PlatformClient, PlatformError, list_tokens
 from backend.settings import mask_secret, settings
-from backend.team import direction_to_token_index, load_team
+from backend.slots import load_slots
+from backend.team import load_team
 
 FAILED_STATUSES = ("done", "failed", "error", "cancelled")
 
@@ -64,7 +65,7 @@ class Controller:
         tokens = list_tokens()
         if not tokens:
             return "没有 token（.env 里配 CTF2_AGENT_TOKEN_0/1/2）"
-        by_dir = direction_to_token_index(load_team())
+        by_dir = load_slots()
         self._auto_slots = []
         persisted_failed = self.manager.failed_ids()
         # team: each direction goes to the agent that specializes in it.
@@ -121,6 +122,8 @@ class Controller:
         return True
 
     def manual_solve(self, spec: dict, title: str) -> int:
+        spec = dict(spec)
+        spec.setdefault("team", load_team())
         session = self.manager.new_session(spec, title, spec.get("category", "web"))
         self._bump()
         return session.id
@@ -201,6 +204,7 @@ class Controller:
                     new_spec = dict(new_spec)
                     new_spec["platform_challenge_id"] = cid
                     new_spec["platform_ground_id"] = gid
+                    new_spec.setdefault("team", load_team())
                     self._retry_queue.put(("spec", new_spec, meta, str(cid), session))
                 finally:
                     client.close()
@@ -313,6 +317,7 @@ class Controller:
                 spec = dict(spec)
                 spec["platform_challenge_id"] = meta["challenge_id"]
                 spec["platform_ground_id"] = meta["ground_id"]
+                spec.setdefault("team", load_team())
                 pending = slot.get("pending")
                 if pending is not None:
                     self.manager.start_pending_session(pending, spec)

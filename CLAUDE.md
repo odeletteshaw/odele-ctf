@@ -16,9 +16,12 @@ backend/      控制台后端（数据库 + API，纯服务层）
   settings.py   配置存取：平台 tokens、团队、模型配置（DB 0600；接口只返回打码值）
   manager.py    session 生命周期 + 持久化 · worker.py 解题子进程入口
   controller.py autosolve / retry 控制循环
-  platform.py   CTF2 REST 客户端 · autosolve.py 平台题 → spec · team.py RAFT 分工
+  platform.py   CTF2 REST 客户端 · autosolve.py 平台题 → spec
+  team.py       角色团队配置（团队长/侦察/方向专家/报告员）
+  slots.py      打题 Token 槽位（方向 → token 下标），与团队角色分开
 agent/        解题能力层（纯库）
   loop.py       Tool、run_loop、solve()、flag 提取（FLAG_PATTERN）
+  team.py       角色团队编排：团队长计划 → 侦察 → 方向专家 → 报告员复盘
   config.py     厂商/模型配置；加载 .env（真实环境变量优先于 .env）
   sandbox.py    沙箱引擎：run_python / run_command（隔离子进程、禁网、rlimit）
   evaluate.py   benchmark()：各题型共享的 PASS/FAIL 评测循环
@@ -51,6 +54,10 @@ agent/        解题能力层（纯库）
   `run_python`；crypto 只给 `run_python`。
 - 题面数据作为 user prompt 传给模型。flag 形如 `flag{...}`；`FLAG_PATTERN` 从模型最后一条
   消息里提取最终 flag。
+- **角色团队**（`agent/team.py`）：团队长（无工具，出计划）→ 信息收集员（用题型工具侦察，
+  pwn/ai 因目标有状态而跳过）→ 方向专家（带着计划+侦察结果解题）→ 报告收集员（写题解与
+  团队复盘）。手动与平台打题都走这条链；session 的 `role` 事件组成「团队复盘」时间线。
+  注意：团队 ≠ 打题 token 分配（后者见 `backend/slots.py`）。
 
 ## 核心设计原则：工具是「能力」，不是「解法」
 
