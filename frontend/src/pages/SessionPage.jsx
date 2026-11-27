@@ -89,8 +89,9 @@ function MessageBubble({ m, onReply }) {
   )
 }
 
-export default function SessionPage() {
-  const { id } = useParams()
+export default function SessionPage({ id: propId, embedded = false }) {
+  const params = useParams()
+  const id = propId ?? params.id
   const navigate = useNavigate()
   const [session, setSession] = useState(null)
   const [error, setError] = useState('')
@@ -98,6 +99,7 @@ export default function SessionPage() {
   const [text, setText] = useState('')
 
   const refresh = useCallback(async () => {
+    if (!id) { setSession(null); return }
     try {
       setSession(await getSession(id))
       setError('')
@@ -107,6 +109,7 @@ export default function SessionPage() {
   }, [id])
 
   useEffect(() => {
+    setSession(null)  // clear stale detail while switching tasks
     refresh()
     const timer = setInterval(refresh, 3000)
     return () => clearInterval(timer)
@@ -134,11 +137,19 @@ export default function SessionPage() {
     } catch (e) { setError(e.message) }
   }
 
+  if (embedded && !id) {
+    return (
+      <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Typography color="text.secondary">← 从左侧选择一道题查看详情</Typography>
+      </Box>
+    )
+  }
+
   if (!session) {
     return (
-      <Box sx={{ p: 2 }}>
-        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/')}>返回</Button>
-        <Typography sx={{ mt: 2 }} color="text.secondary">
+      <Box sx={{ p: 2, height: embedded ? '100%' : undefined }}>
+        {!embedded && <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/')}>返回</Button>}
+        <Typography sx={{ mt: embedded ? 0 : 2 }} color="text.secondary">
           {error || '加载中…'}
         </Typography>
       </Box>
@@ -146,12 +157,14 @@ export default function SessionPage() {
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, height: 'calc(100vh - 112px)', minHeight: 560 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, height: embedded ? '100%' : 'calc(100vh - 112px)', minHeight: embedded ? 0 : 560 }}>
       <Paper sx={{ p: 2 }}>
         <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
-          <Tooltip title="返回任务列表">
-            <IconButton onClick={() => navigate('/')}><ArrowBackIcon /></IconButton>
-          </Tooltip>
+          {!embedded && (
+            <Tooltip title="返回任务列表">
+              <IconButton onClick={() => navigate('/')}><ArrowBackIcon /></IconButton>
+            </Tooltip>
+          )}
           <Typography variant="h6" sx={{ fontWeight: 600 }}>{session.title}</Typography>
           <Chip size="small" label={session.category} variant="outlined" />
           <Chip size="small" label={status.label} color={status.color} />

@@ -1,21 +1,19 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
   Box, Button, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
-  FormControlLabel, Checkbox, TextField, MenuItem, Table, TableBody,
-  TableCell, TableContainer, TableHead, TableRow, Paper, Typography,
-  Stack, IconButton, Tooltip, TableSortLabel, Alert, TablePagination,
+  FormControlLabel, Checkbox, TextField, MenuItem, Paper, Typography,
+  Stack, IconButton, Tooltip, Alert, List, ListItemButton,
 } from '@mui/material'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import StopIcon from '@mui/icons-material/Stop'
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
-import VisibilityIcon from '@mui/icons-material/Visibility'
 import ReplayIcon from '@mui/icons-material/Replay'
 import DeleteIcon from '@mui/icons-material/Delete'
 import {
   listSessions, getStatus, getSlots, startAutosolve, stopAutosolve,
   stopSession, deleteSession, retrySession, batchDelete, listTokens,
 } from '../api.js'
+import SessionPage from './SessionPage.jsx'
 
 const STATUS = {
   running: { label: '进行中', color: 'warning' },
@@ -31,7 +29,6 @@ const FAILED = ['done', 'failed', 'error', 'cancelled']
 const DIRS = ['web', 'crypto', 'misc', 'forensics']
 
 export default function CtfPage() {
-  const navigate = useNavigate()
   const [sessions, setSessions] = useState([])
   const [autosolving, setAutosolving] = useState(false)
   const [slots, setSlots] = useState([])
@@ -39,12 +36,10 @@ export default function CtfPage() {
   const [dirs, setDirs] = useState({})
   const [diff, setDiff] = useState('')
   const [maxn, setMaxn] = useState(3)
-  const [page, setPage] = useState(0)
-  const [rowsPerPage, setRowsPerPage] = useState(20)
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [catFilter, setCatFilter] = useState('all')
-  const [sort, setSort] = useState({ key: 'id', dir: 'desc' })
+  const [selectedId, setSelectedId] = useState(null)
   const [availableTokens, setAvailableTokens] = useState([])
   const [chosenTokens, setChosenTokens] = useState([])
 
@@ -98,7 +93,6 @@ export default function CtfPage() {
         tokens: chosenTokens,
       })
       setAutoOpen(false)
-      setSort({ key: 'id', dir: 'desc' })  // newest session first
       await refresh()
     } catch (e) {
       alert('启动失败: ' + e.message)
@@ -110,25 +104,8 @@ export default function CtfPage() {
     [sessions],
   )
 
-  const toggleSort = (key) => setSort((cur) => (
-    cur.key === key
-      ? { key, dir: cur.dir === 'asc' ? 'desc' : 'asc' }
-      : { key, dir: key === 'id' || key === 'created' ? 'desc' : 'asc' }
-  ))
-
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase()
-    const created = (s) => {
-      if (s.created_ts) return s.created_ts
-      if (!s.created_at) return 0
-      const t = Date.parse(`${new Date().getFullYear()}-${s.created_at.replace(' ', 'T')}`)
-      return Number.isNaN(t) ? 0 : t
-    }
-    const value = (s) => (
-      sort.key === 'created' ? created(s)
-        : sort.key === 'id' ? s.id
-          : String(s[sort.key] ?? '')
-    )
     return sessions
       .filter((s) => {
         if (statusFilter !== 'all' && s.status !== statusFilter) return false
@@ -137,128 +114,107 @@ export default function CtfPage() {
         return [s.id, s.title, s.category, s.status]
           .some((v) => String(v ?? '').toLowerCase().includes(needle))
       })
-      .sort((a, b) => {
-        const va = value(a)
-        const vb = value(b)
-        const cmp = typeof va === 'number' && typeof vb === 'number'
-          ? va - vb
-          : String(va).localeCompare(String(vb))
-        return sort.dir === 'asc' ? cmp : -cmp
-      })
-  }, [sessions, q, statusFilter, catFilter, sort])
+      .sort((a, b) => b.id - a.id)  // newest first
+  }, [sessions, q, statusFilter, catFilter])
 
-  const view = (id) => navigate(`/sessions/${id}`)
-  const shown = visible.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+  // Default to the first task; keep a valid selection when the list changes.
+  useEffect(() => {
+    if (!visible.some((s) => s.id === selectedId)) {
+      setSelectedId(visible.length ? visible[0].id : null)
+    }
+  }, [visible, selectedId])
 
-  useEffect(() => { setPage(0) }, [q, statusFilter, catFilter, sort])
+  const act = (fn) => (e) => { e.stopPropagation(); fn() }
 
   const slotText = slots.map((s) =>
     `${s.direction}·t${s.token_index} ${s.running ? s.phase + (s.current_title ? ':' + s.current_title : '') : '停'}`).join(' | ')
 
   return (
-    <Box>
-      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
-        <Button variant="contained" startIcon={autosolving ? <StopIcon /> : <PlayArrowIcon />} onClick={openAuto}>
-          {autosolving ? '停止打题' : '开始打题'}
-        </Button>
-        <Button color="error" startIcon={<DeleteSweepIcon />} onClick={() => batchDelete().then(refresh)}>批量删除失败</Button>
-        <Typography variant="body2" color="text.secondary">
-          显示 {visible.length} / {sessions.length} 个任务{slotText ? ` · ${slotText}` : ''}
-        </Typography>
-      </Stack>
-
-      <Stack direction="row" spacing={1} sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
-        <TextField size="small" label="搜索题目 / 编号 / 大类" value={q}
-          onChange={(e) => setQ(e.target.value)} sx={{ minWidth: 240 }} />
-        <TextField select size="small" label="状态" value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)} sx={{ minWidth: 140 }}>
-          <MenuItem value="all">全部状态</MenuItem>
-          {Object.entries(STATUS).map(([key, st]) => (
-            <MenuItem key={key} value={key}>{st.label}（{key}）</MenuItem>
-          ))}
-        </TextField>
-        <TextField select size="small" label="大类" value={catFilter}
-          onChange={(e) => setCatFilter(e.target.value)} sx={{ minWidth: 140 }}>
-          <MenuItem value="all">全部大类</MenuItem>
-          {categories.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
-        </TextField>
-        <Button onClick={() => { setQ(''); setStatusFilter('all'); setCatFilter('all') }}>
-          重置筛选
-        </Button>
-      </Stack>
-
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              {[
-                ['id', '编号', 70],
-                ['category', '大类', 90],
-                ['title', '题目名称', null],
-                ['status', '状态', 90],
-                ['created', '创建时间', 120],
-              ].map(([key, label, width]) => (
-                <TableCell key={key} width={width || undefined} sortDirection={sort.key === key ? sort.dir : false}>
-                  <TableSortLabel
-                    active={sort.key === key}
-                    direction={sort.key === key ? sort.dir : 'asc'}
-                    onClick={() => toggleSort(key)}
-                  >
-                    {label}
-                  </TableSortLabel>
-                </TableCell>
+    <Box sx={{ display: 'flex', gap: 2, height: 'calc(100vh - 112px)', minHeight: 560 }}>
+      {/* ---- left: task list ---- */}
+      <Paper sx={{ width: 400, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <Box sx={{ p: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+          <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+            <Button fullWidth variant="contained" size="small"
+              startIcon={autosolving ? <StopIcon /> : <PlayArrowIcon />} onClick={openAuto}>
+              {autosolving ? '停止打题' : '开始打题'}
+            </Button>
+            <Tooltip title="批量删除失败任务">
+              <IconButton color="error" size="small" onClick={() => batchDelete().then(refresh)}>
+                <DeleteSweepIcon />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+          <TextField fullWidth size="small" label="搜索题目 / 编号 / 大类" value={q}
+            onChange={(e) => setQ(e.target.value)} sx={{ mb: 1 }} />
+          <Stack direction="row" spacing={1}>
+            <TextField select size="small" label="状态" value={statusFilter} fullWidth
+              onChange={(e) => setStatusFilter(e.target.value)}>
+              <MenuItem value="all">全部状态</MenuItem>
+              {Object.entries(STATUS).map(([key, st]) => (
+                <MenuItem key={key} value={key}>{st.label}</MenuItem>
               ))}
-              <TableCell width={220}>操作</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {shown.map((s) => {
-              const st = STATUS[s.status] || { label: s.status, color: 'default' }
-              return (
-                <TableRow key={s.id} hover>
-                  <TableCell color="text.secondary">{s.id}</TableCell>
-                  <TableCell color="text.secondary">{s.category}</TableCell>
-                  <TableCell>{s.title}</TableCell>
-                  <TableCell>
-                    <Chip size="small" label={st.label} color={st.color} />
-                    {s.pending_approvals > 0 && (
-                      <Chip size="small" color="warning" sx={{ ml: 0.5 }}
-                        label={`待审批 ${s.pending_approvals}`} />
-                    )}
-                    {s.pending_mentions > 0 && (
-                      <Chip size="small" color="info" sx={{ ml: 0.5 }}
-                        label={`@你 ${s.pending_mentions}`} />
-                    )}
-                  </TableCell>
-                  <TableCell color="text.secondary">{s.created_at || '—'}</TableCell>
-                  <TableCell>
-                    <Stack direction="row" spacing={0.5}>
-                      <Tooltip title="查看"><IconButton size="small" onClick={() => view(s.id)}><VisibilityIcon /></IconButton></Tooltip>
-                      {s.is_running
-                        ? <Tooltip title="停止"><IconButton size="small" color="error" onClick={() => stopSession(s.id).then(refresh)}><StopIcon /></IconButton></Tooltip>
-                        : FAILED.includes(s.status) && <Tooltip title="重试"><IconButton size="small" onClick={() => retrySession(s.id).then(refresh)}><ReplayIcon /></IconButton></Tooltip>}
-                      <Tooltip title="删除"><IconButton size="small" color="error" onClick={() => deleteSession(s.id).then(refresh)}><DeleteIcon /></IconButton></Tooltip>
-                    </Stack>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-        <TablePagination
-          component="div"
-          count={visible.length}
-          page={page}
-          rowsPerPage={rowsPerPage}
-          onPageChange={(e, next) => setPage(next)}
-          onRowsPerPageChange={(e) => {
-            setRowsPerPage(parseInt(e.target.value, 10))
-            setPage(0)
-          }}
-          rowsPerPageOptions={[10, 20, 50, 100]}
-          labelRowsPerPage="每页"
-        />
-      </TableContainer>
+            </TextField>
+            <TextField select size="small" label="大类" value={catFilter} fullWidth
+              onChange={(e) => setCatFilter(e.target.value)}>
+              <MenuItem value="all">全部大类</MenuItem>
+              {categories.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+            </TextField>
+          </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            {visible.length} / {sessions.length} 个任务{slotText ? ` · ${slotText}` : ''}
+          </Typography>
+        </Box>
+
+        <List dense sx={{ flex: 1, overflow: 'auto', px: 1, py: 1 }}>
+          {visible.map((s) => {
+            const st = STATUS[s.status] || { label: s.status, color: 'default' }
+            const selected = s.id === selectedId
+            return (
+              <ListItemButton key={s.id} selected={selected} onClick={() => setSelectedId(s.id)}
+                sx={{
+                  borderRadius: 1, mb: 0.5, flexDirection: 'column', alignItems: 'stretch',
+                  '&:hover .rowActions': { opacity: 1 },
+                }}>
+                <Stack direction="row" spacing={0.75} alignItems="center">
+                  <Typography variant="caption" color="text.secondary">#{s.id}</Typography>
+                  <Chip size="small" label={s.category} variant="outlined" sx={{ height: 18 }} />
+                  <Box sx={{ flex: 1 }} />
+                  <Chip size="small" label={st.label} color={st.color} sx={{ height: 20 }} />
+                </Stack>
+                <Typography variant="body2" noWrap title={s.title}
+                  sx={{ mt: 0.5, fontWeight: selected ? 600 : 400 }}>
+                  {s.title || '（未命名）'}
+                </Typography>
+                <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
+                  {s.pending_approvals > 0 && (
+                    <Chip size="small" color="warning" sx={{ height: 18 }} label={`待审批 ${s.pending_approvals}`} />
+                  )}
+                  {s.pending_mentions > 0 && (
+                    <Chip size="small" color="info" sx={{ height: 18 }} label={`@你 ${s.pending_mentions}`} />
+                  )}
+                  <Typography variant="caption" color="text.secondary">{s.created_at || '—'}</Typography>
+                  <Box sx={{ flex: 1 }} />
+                  <Stack direction="row" spacing={0.25} className="rowActions" sx={{ opacity: 0, transition: 'opacity .15s' }}>
+                    {s.is_running
+                      ? <Tooltip title="停止"><IconButton size="small" color="error" onClick={act(() => stopSession(s.id).then(refresh))}><StopIcon fontSize="small" /></IconButton></Tooltip>
+                      : FAILED.includes(s.status) && <Tooltip title="重试"><IconButton size="small" onClick={act(() => retrySession(s.id).then(refresh))}><ReplayIcon fontSize="small" /></IconButton></Tooltip>}
+                    <Tooltip title="删除"><IconButton size="small" color="error" onClick={act(() => deleteSession(s.id).then(refresh))}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+                  </Stack>
+                </Stack>
+              </ListItemButton>
+            )
+          })}
+          {!visible.length && (
+            <Typography color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>没有匹配的任务</Typography>
+          )}
+        </List>
+      </Paper>
+
+      {/* ---- right: selected task detail ---- */}
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <SessionPage key={selectedId ?? 'none'} id={selectedId} embedded />
+      </Box>
 
       {/* start autosolve dialog */}
       <Dialog open={autoOpen} onClose={() => setAutoOpen(false)} fullWidth maxWidth="sm">
