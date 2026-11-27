@@ -117,6 +117,7 @@ agent/team_skills/
 ```
 
 - 系统 prompt 只放**紧凑索引**；角色通过 `search_role_skill(query)` 按需读取全文
+- 控制台「技能包」页可按角色浏览、搜索并阅读全文（Markdown 渲染）；团队页的技能计数可点击进入
 - 团队长/报告员不能调工具，技能包会以「索引 + SKILL.md 正文」注入
 - 侦察员只用只读工具白名单（http_request/batch、download_file、run_python、
   search_knowledge、triage/strings/disassemble），专家用完整工具集

@@ -31,6 +31,7 @@ export const manualSolve = (spec, title) => api('/api/manual', { method: 'POST',
 export const getTeam = () => api('/api/team')
 export const saveTeam = (members) => api('/api/team', { method: 'POST', body: JSON.stringify({ members }) })
 export const getTeamSkills = () => api('/api/team/skills')
+export const getSkillContent = (memberIndex, entryIndex) => api(`/api/team/skills/${memberIndex}/${entryIndex}`)
 export const getTokenSlots = () => api('/api/token-slots')
 export const saveTokenSlots = (slots) => api('/api/token-slots', { method: 'POST', body: JSON.stringify({ slots }) })
 

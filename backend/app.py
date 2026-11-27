@@ -242,19 +242,48 @@ def set_team(body: dict):
 
 @app.get("/api/team/skills")
 def team_skills():
-    from agent.skills import skill_dirs, summary
+    from agent.skills import entries, member_dirs
     out = []
-    for member in load_team():
-        role = member.get("role")
-        dirs: list = []
-        for direction in (member.get("directions") or [None]):
-            for path in skill_dirs(role, direction):
-                if path not in dirs:
-                    dirs.append(path)
-        info = summary(dirs)
-        out.append({"role": role, "name": member.get("name"),
-                    "count": info["count"], "skills": info["names"]})
+    for index, member in enumerate(load_team()):
+        items = entries(member_dirs(member))
+        out.append({
+            "index": index,
+            "role": member.get("role"),
+            "name": member.get("name"),
+            "directions": member.get("directions") or [],
+            "count": len(items),
+            "skills": [item["name"] for item in items],
+            "entries": [
+                {"index": i, "name": item["name"], "description": item["description"],
+                 "kind": item["kind"], "file": item["path"].name}
+                for i, item in enumerate(items)
+            ],
+        })
     return {"members": out}
+
+
+@app.get("/api/team/skills/{member_index}/{entry_index}")
+def team_skill_content(member_index: int, entry_index: int):
+    import agent.skills as skills
+    team = load_team()
+    if not (0 <= member_index < len(team)):
+        return JSONResponse({"error": "member not found"}, status_code=404)
+    member = team[member_index]
+    items = skills.entries(skills.member_dirs(member))
+    if not (0 <= entry_index < len(items)):
+        return JSONResponse({"error": "skill not found"}, status_code=404)
+    item = items[entry_index]
+    try:
+        relative = item["path"].relative_to(skills.ROOT)
+    except ValueError:
+        relative = item["path"].name
+    return {
+        "name": item["name"],
+        "description": item["description"],
+        "kind": item["kind"],
+        "source": str(relative),
+        "content": skills.read(item),
+    }
 
 
 @app.get("/api/token-slots")

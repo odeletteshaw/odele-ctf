@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Paper, Typography, Button, Chip, Stack, Box, Alert, Tooltip } from '@mui/material'
 import SaveIcon from '@mui/icons-material/Save'
 import { getTeam, getTeamSkills, saveTeam } from '../api.js'
@@ -20,6 +21,7 @@ export default function TeamPage() {
   const [members, setMembers] = useState([])
   const [skills, setSkills] = useState({})
   const [json, setJson] = useState('')
+  const navigate = useNavigate()
 
   const load = async () => {
     const [t, s] = await Promise.all([getTeam(), getTeamSkills()])
@@ -64,7 +66,8 @@ export default function TeamPage() {
                       <Chip key={d} size="small" label={d} variant="outlined" />
                     ))}
                     <Tooltip title={(skills[`${m.role}:${m.name}`]?.skills || []).join('、') || '暂无技能资料'}>
-                      <Chip size="small" color="default" variant="outlined"
+                      <Chip size="small" color="default" variant="outlined" clickable
+                        onClick={() => navigate('/skills')}
                         label={`技能包 ${skills[`${m.role}:${m.name}`]?.count ?? 0} 篇`} />
                     </Tooltip>
                   </Stack>

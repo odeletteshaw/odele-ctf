@@ -221,3 +221,21 @@ def summary(dirs: list[Path]) -> dict[str, Any]:
         "count": len(items),
         "names": [e["name"] for e in items],
     }
+
+
+def member_dirs(member: dict) -> list[Path]:
+    """Skill dirs for a team member entry (experts may cover several directions)."""
+    role = member.get("role")
+    found: list[Path] = []
+    for direction in member.get("directions") or [None]:
+        for path in skill_dirs(role, direction):
+            if path not in found:
+                found.append(path)
+    return found
+
+
+def read(entry: dict[str, Any]) -> str:
+    """Body of one entry with its frontmatter stripped."""
+    text = entry["path"].read_text(errors="replace")
+    _, body = _parse_frontmatter(text)
+    return body
