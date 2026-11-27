@@ -45,18 +45,29 @@ def _is_css_like(flag: str) -> bool:
 
 # Prose that merely mentions fragments, e.g. "DASCTF{d91c` + `2816}", is not a flag.
 _JOINED_FRAGMENTS = re.compile(r"`|\s\+\s")
+# Template bodies the model writes when it CAN'T solve: flag{xxxxx}, flag{XXX}, flag{...},
+# flag{your_flag_here}. Submitting these just burns platform attempts. A placeholder is an
+# inner made only of a repeated filler char (x/X/?/.) or an obvious filler word.
+_FILLER_WORDS = {"x", "xx", "flag", "yourflag", "yourflaghere", "flaghere", "example",
+                 "placeholder", "redacted", "todo", "unknown", "answer", "result"}
 
 
 def _is_placeholder_flag(flag: str) -> bool:
-    """True for literal placeholders like 'flag{...}' — a matched token with no alphanumeric
-    payload, which is the model echoing an example rather than a real recovered flag —
-    and for markdown/concatenation prose that only names flag fragments."""
+    """True for literal placeholders the model echoes instead of a recovered flag —
+    no alphanumeric payload, markdown/concatenation prose, or a filler body like
+    'xxxxx' / 'XXX' / 'your_flag_here'."""
     if "{" not in flag or "}" not in flag:
         return True
     inner = flag[flag.index("{") + 1:flag.rindex("}")]
     if _JOINED_FRAGMENTS.search(flag):
         return True
-    return not re.search(r"[A-Za-z0-9]", inner)
+    if not re.search(r"[A-Za-z0-9]", inner):
+        return True
+    # A single character (or ?/.) repeated for the whole body is filler, not a flag.
+    core = re.sub(r"[^A-Za-z0-9]", "", inner)
+    if core and len(set(core.lower())) == 1 and core[0].lower() in "x?.":
+        return True
+    return re.sub(r"[^a-z0-9]", "", inner.lower()) in _FILLER_WORDS
 
 
 def extract_flags(text: str, pattern: "re.Pattern[str] | None" = None) -> list[str]:
