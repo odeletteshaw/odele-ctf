@@ -105,8 +105,9 @@ scripts/import_skills.py  把本地资料导入扁平技能库
 - **平台 token 不按方向绑定**：在「开始打题」时勾选本次使用哪些 token，方向在所选 token
   间轮转；token 本身在「配置管理」页维护（它们只是 CTF 练习平台的 agent 接入凭证）。
 
-团队页支持自由新建/编辑/删除角色（名字、职责定义、绑定技能）；MCP 字段已在数据模型中
-预留，本轮暂未接入真实 MCP。
+「团队与技能」页把两者合并：左侧是角色长列表（团队长置顶），中间是所选角色绑定的技能
+（可搜索），右侧直接阅读 Markdown 内容；顶部导航直达，不再需要页面跳转。支持自由新建/
+编辑/删除角色（名字、职责定义、绑定技能）；MCP 字段已在数据模型中预留，本轮暂未接入。
 
 ### 技能库（扁平）
 
@@ -116,7 +117,7 @@ agent/skill_library/*.md     每篇一个技能，frontmatter: id / name / descr
 
 - 角色用技能 **id** 或 **tag 选择器**（`tag:web`）绑定技能，不再有按角色的技能包目录
 - 系统 prompt 只放**紧凑索引**；角色通过 `search_role_skill(query)` 按需读取全文
-- 控制台「技能库」页可搜索、按 tag 过滤并阅读全文（Markdown 渲染）
+- 控制台「团队与技能」页可搜索、按 tag 过滤并阅读全文（Markdown 渲染）
 - 导入本地资料：
   `python scripts/import_skills.py --source ~/sec-notes/web --tags web,my-notes --id-prefix web`
   （支持 md/txt/代码/PDF；`--list` 查看，`--dry-run` 预览）

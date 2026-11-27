@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
   Paper, Typography, Button, Chip, Stack, Box, Alert, Tooltip, Dialog,
   DialogTitle, DialogContent, DialogActions, TextField, Checkbox, FormControlLabel,
-  Accordion, AccordionSummary, AccordionDetails, IconButton, Divider,
+  IconButton, Divider, List, ListItemButton, ListItemText, InputAdornment,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SaveIcon from '@mui/icons-material/Save'
 import EditIcon from '@mui/icons-material/Edit'
 import DeleteIcon from '@mui/icons-material/Delete'
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import SearchIcon from '@mui/icons-material/Search'
+import DataObjectIcon from '@mui/icons-material/DataObject'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
   getTeam, getTeamSkills, getTeamPacks, saveTeam, createTeamRole, deleteTeamRole,
+  getSkillContent,
 } from '../api.js'
 
 const KIND_META = {
@@ -22,6 +25,7 @@ const KIND_META = {
   custom: { label: '自定义', color: 'secondary' },
   worker: { label: '通用', color: 'default' },
 }
+const KIND_LABEL = { method: '方法', reference: '资料' }
 
 function SkillPicker({ library, tags, value, onChange }) {
   const [q, setQ] = useState('')
@@ -35,7 +39,7 @@ function SkillPicker({ library, tags, value, onChange }) {
     : library
   return (
     <Box>
-      <Typography variant="caption" color="text.secondary">按标签整组绑定（tag:）</Typography>
+      <Typography variant="caption" color="text.secondary">按标签整组绑定</Typography>
       <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mb: 1, mt: 0.5 }}>
         {tags.map((tag) => (
           <Chip key={tag} size="small" label={`tag:${tag}`} clickable
@@ -70,40 +74,64 @@ function SkillPicker({ library, tags, value, onChange }) {
 
 export default function TeamPage() {
   const [members, setMembers] = useState([])
-  const [skills, setSkills] = useState({})
+  const [skillsById, setSkillsById] = useState({})
   const [library, setLibrary] = useState([])
   const [tags, setTags] = useState([])
-  const [json, setJson] = useState('')
+  const [selectedId, setSelectedId] = useState(null)
+  const [selectedEntry, setSelectedEntry] = useState(0)
+  const [content, setContent] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [skillQuery, setSkillQuery] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [draft, setDraft] = useState({ name: '', description: '', skills: [] })
   const [editing, setEditing] = useState(null)
-  const navigate = useNavigate()
+  const [jsonOpen, setJsonOpen] = useState(false)
+  const [json, setJson] = useState('')
 
   const load = async () => {
     const [t, s, p] = await Promise.all([getTeam(), getTeamSkills(), getTeamPacks()])
     const list = t.members || []
     setMembers(list)
     setJson(JSON.stringify({ members: list }, null, 2))
-    const map = {}
-    for (const m of s.members || []) map[m.id] = m
-    setSkills(map)
+    const byId = {}
+    for (const m of s.members || []) byId[m.id] = m
+    setSkillsById(byId)
     setLibrary(p.packs || [])
     setTags(p.tags || [])
+    setSelectedId((current) => (
+      current && list.some((m) => m.id === current)
+        ? current
+        : (list.find((m) => m.role === 'lead')?.id || list[0]?.id || null)
+    ))
   }
   useEffect(() => { load() }, [])
 
-  const lead = useMemo(() => members.find((m) => m.role === 'lead'), [members])
-  const workers = useMemo(() => members.filter((m) => m.role !== 'lead'), [members])
+  const member = useMemo(() => members.find((m) => m.id === selectedId) || null, [members, selectedId])
+  const info = member ? skillsById[member.id] : null
+  const entries = useMemo(() => {
+    const list = info?.entries || []
+    const needle = skillQuery.trim().toLowerCase()
+    if (!needle) return list
+    return list.filter((e) => `${e.name} ${e.description}`.toLowerCase().includes(needle))
+  }, [info, skillQuery])
 
-  const saveJson = async () => {
-    try {
-      const parsed = JSON.parse(json).members
-      if (!Array.isArray(parsed)) throw new Error('members 必须是数组')
-      await saveTeam(parsed)
-      load()
-      alert('团队已保存')
-    } catch (e) { alert('保存失败: ' + e.message) }
-  }
+  useEffect(() => {
+    setSelectedEntry(0)
+    setContent(null)
+    setSkillQuery('')
+  }, [selectedId])
+
+  useEffect(() => {
+    if (!info?.entries?.length || info.index == null) { setContent(null); return }
+    const target = info.entries[selectedEntry] || info.entries[0]
+    let alive = true
+    setLoading(true)
+    getSkillContent(info.index, target.index)
+      .then((c) => { if (alive) setContent(c) })
+      .catch(() => { if (alive) setContent(null) })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [skillsById, selectedId, selectedEntry])
 
   const submitCreate = async () => {
     if (!draft.name.trim()) { alert('请填写角色名'); return }
@@ -133,110 +161,173 @@ export default function TeamPage() {
     } catch (e) { alert('保存失败: ' + e.message) }
   }
 
-  const removeRole = async (member) => {
-    if (!confirm(`删除角色「${member.name}」？`)) return
+  const removeRole = async (target) => {
+    if (!confirm(`删除角色「${target.name}」？`)) return
     try {
-      await deleteTeamRole(member.id)
+      await deleteTeamRole(target.id)
       load()
     } catch (e) { alert('删除失败: ' + e.message) }
   }
 
-  const card = (m, isLead = false) => {
-    const info = skills[m.id] || {}
-    const meta = KIND_META[m.kind] || KIND_META.worker
-    return (
-      <Box key={m.id} sx={{
-        p: 2, border: '1px solid', borderColor: isLead ? 'warning.main' : 'divider',
-        borderRadius: 1.5, height: '100%', display: 'flex', flexDirection: 'column',
-      }}>
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-          <Chip size="small" color={meta.color} label={meta.label} />
-          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{m.name}</Typography>
-          {(m.directions || []).map((d) => <Chip key={d} size="small" label={d} variant="outlined" />)}
-          <Box sx={{ flex: 1 }} />
-          <Tooltip title={(info.skill_names || []).join('、') || '暂无技能'}>
-            <Chip size="small" variant="outlined" clickable onClick={() => navigate('/skills')}
-              label={`技能 ${info.count ?? 0} 条`} />
-          </Tooltip>
-          <Tooltip title="编辑">
-            <IconButton size="small" onClick={() => setEditing({
-              ...m, directions: (m.directions || []).join(', '), skills: [...(m.skills || [])],
-            })}><EditIcon fontSize="small" /></IconButton>
-          </Tooltip>
-          {!isLead && m.kind === 'custom' && (
-            <Tooltip title="删除">
-              <IconButton size="small" color="error" onClick={() => removeRole(m)}>
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          )}
-        </Stack>
-        {m.description && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, flex: 1 }}>
-            {m.description}
-          </Typography>
-        )}
-        <Stack direction="row" spacing={0.5} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
-          {(m.skills || []).map((selector) => (
-            <Chip key={selector} size="small" label={selector}
-              sx={{ fontFamily: 'Menlo,monospace', fontSize: 11 }} />
-          ))}
-          {!(m.skills || []).length && (
-            <Typography variant="caption" color="text.secondary">未绑定技能</Typography>
-          )}
-        </Stack>
-      </Box>
-    )
+  const saveJson = async () => {
+    try {
+      const parsed = JSON.parse(json).members
+      if (!Array.isArray(parsed)) throw new Error('members 必须是数组')
+      await saveTeam(parsed)
+      setJsonOpen(false)
+      load()
+    } catch (e) { alert('保存失败: ' + e.message) }
   }
 
+  const meta = member ? (KIND_META[member.kind] || KIND_META.worker) : KIND_META.worker
+  const lead = members.find((m) => m.role === 'lead')
+
   return (
-    <Box sx={{ width: '100%', minHeight: 'calc(100vh - 140px)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <Paper sx={{ p: 2.5 }}>
-        <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
-          <Typography variant="h6" sx={{ mr: 1 }}>团队</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ flex: 1, minWidth: 300 }}>
-            团队长是唯一入口，接收命令后输出 DAG；其余角色扁平，可被任意调度。需要拍板的节点会暂停并请求你审批。
-            技能来自统一扁平技能库。
+    <Box sx={{ display: 'flex', gap: 1.5, height: 'calc(100vh - 112px)', minHeight: 560 }}>
+      {/* members */}
+      <Paper sx={{ width: 250, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <Box sx={{ p: 1.5, pb: 0.5 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>团队</Typography>
+          <Typography variant="caption" color="text.secondary">
+            {members.length} 个角色 · 团队长唯一入口
           </Typography>
-          <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>新建角色</Button>
-          <Button variant="outlined" onClick={() => navigate('/skills')}>技能库</Button>
-        </Stack>
-      </Paper>
-
-      {lead && (
-        <Paper sx={{ p: 2 }}>
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>入口</Typography>
-          {card(lead, true)}
-        </Paper>
-      )}
-
-      <Paper sx={{ p: 2, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
-          <Typography variant="subtitle2">扁平角色池</Typography>
-          <Typography variant="body2" color="text.secondary">{workers.length} 个</Typography>
-        </Stack>
-        <Box sx={{
-          display: 'grid', gap: 1.5, overflow: 'auto', alignContent: 'start',
-          gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)', xl: 'repeat(3, 1fr)' },
-        }}>
-          {workers.map((m) => card(m))}
         </Box>
+        <Divider />
+        <List dense sx={{ flex: 1, overflow: 'auto', px: 0.5, py: 0.5 }}>
+          {members.map((m) => {
+            const mInfo = skillsById[m.id]
+            const mMeta = KIND_META[m.kind] || KIND_META.worker
+            return (
+              <ListItemButton key={m.id} selected={m.id === selectedId}
+                onClick={() => setSelectedId(m.id)} sx={{ borderRadius: 1, mb: 0.25 }}>
+                <ListItemText
+                  primary={<Stack direction="row" spacing={0.5} alignItems="center">
+                    <Typography variant="body2" sx={{ fontWeight: m.role === 'lead' ? 700 : 500 }}>
+                      {m.name}
+                    </Typography>
+                    {m.role === 'lead' && <Chip size="small" color="warning" label="入口" />}
+                  </Stack>}
+                  secondary={`${mMeta.label} · 技能 ${mInfo?.count ?? 0}`}
+                />
+              </ListItemButton>
+            )
+          })}
+        </List>
+        <Divider />
+        <Stack direction="row" spacing={0.5} sx={{ p: 1 }}>
+          <Button size="small" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>新建</Button>
+          <Button size="small" startIcon={<DataObjectIcon />} onClick={() => setJsonOpen(true)}>JSON</Button>
+        </Stack>
       </Paper>
 
-      <Accordion>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography variant="body2">高级：JSON 批量编辑</Typography>
-        </AccordionSummary>
-        <AccordionDetails>
-          <Alert severity="info" sx={{ mb: 1.5 }}>
-            role 只有 lead / worker；kind 用于展示（recon/expert/reporter/custom）；
-            skills 为技能 id 或 tag:xxx。
-          </Alert>
-          <textarea value={json} onChange={(e) => setJson(e.target.value)} rows={12}
-            style={{ width: '100%', background: '#141a24', color: '#d6dae3', border: '1px solid #243043', borderRadius: 6, padding: 10, font: '12px Menlo,monospace' }} />
-          <Button variant="contained" startIcon={<SaveIcon />} onClick={saveJson} sx={{ mt: 1 }}>保存 JSON</Button>
-        </AccordionDetails>
-      </Accordion>
+      {/* selected member skills */}
+      <Paper sx={{ width: 340, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {member ? (
+          <>
+            <Box sx={{ p: 1.5, pb: 0.75 }}>
+              <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                <Chip size="small" color={meta.color} label={meta.label} />
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{member.name}</Typography>
+                {(member.directions || []).map((d) => <Chip key={d} size="small" label={d} variant="outlined" />)}
+                <Box sx={{ flex: 1 }} />
+                <Tooltip title="编辑角色">
+                  <IconButton size="small" onClick={() => setEditing({
+                    ...member, directions: (member.directions || []).join(', '),
+                    skills: [...(member.skills || [])],
+                  })}><EditIcon fontSize="small" /></IconButton>
+                </Tooltip>
+                {member.kind === 'custom' && member.role !== 'lead' && (
+                  <Tooltip title="删除角色">
+                    <IconButton size="small" color="error" onClick={() => removeRole(member)}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                )}
+              </Stack>
+              {member.description && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                  {member.description}
+                </Typography>
+              )}
+              <Stack direction="row" spacing={0.5} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
+                {(member.skills || []).map((selector) => (
+                  <Chip key={selector} size="small" label={selector}
+                    sx={{ fontFamily: 'Menlo,monospace', fontSize: 11 }} />
+                ))}
+                {!(member.skills || []).length && (
+                  <Typography variant="caption" color="text.secondary">未绑定技能</Typography>
+                )}
+              </Stack>
+              <TextField size="small" fullWidth placeholder="搜索该角色的技能…" value={skillQuery}
+                onChange={(e) => setSkillQuery(e.target.value)} sx={{ mt: 1.5 }}
+                InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }} />
+              <Typography variant="caption" color="text.secondary">
+                {entries.length} 条技能
+              </Typography>
+            </Box>
+            <Divider />
+            <List dense sx={{ flex: 1, overflow: 'auto', px: 0.5, py: 0.5 }}>
+              {entries.map((entry) => (
+                <ListItemButton key={entry.index} selected={entry.index === selectedEntry}
+                  onClick={() => setSelectedEntry(entry.index)} sx={{ borderRadius: 1, mb: 0.25 }}>
+                  <ListItemText
+                    primary={<Stack direction="row" spacing={0.5} alignItems="center">
+                      <Typography variant="body2" noWrap>{entry.name}</Typography>
+                      <Chip size="small" label={KIND_LABEL[entry.kind] || entry.kind} variant="outlined" />
+                    </Stack>}
+                    secondary={entry.description || entry.file}
+                    secondaryTypographyProps={{ noWrap: true }}
+                  />
+                </ListItemButton>
+              ))}
+              {!entries.length && (
+                <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
+                  {info?.count ? '没有匹配技能' : '未绑定技能，点编辑绑定'}
+                </Typography>
+              )}
+            </List>
+          </>
+        ) : (
+          <Box sx={{ p: 2 }}><Typography color="text.secondary">选择左侧角色</Typography></Box>
+        )}
+      </Paper>
+
+      {/* content */}
+      <Paper sx={{ flex: 1, minWidth: 360, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {content ? (
+          <>
+            <Box sx={{ px: 3, pt: 2, pb: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+              <Typography variant="h6">{content.name}</Typography>
+              <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.5 }} flexWrap="wrap" useFlexGap>
+                <Chip size="small" label={KIND_LABEL[content.kind] || content.kind} variant="outlined" />
+                <Typography variant="caption" color="text.secondary"
+                  sx={{ fontFamily: 'Menlo,monospace' }}>{content.source}</Typography>
+              </Stack>
+            </Box>
+            <Box sx={{
+              flex: 1, overflow: 'auto', px: 3, py: 2, fontSize: 14, lineHeight: 1.75,
+              wordBreak: 'break-word',
+              '& h1': { fontSize: 22, mt: 2, mb: 1 },
+              '& h2': { fontSize: 18, mt: 2, mb: 1 },
+              '& h3': { fontSize: 16, mt: 1.5, mb: 0.75 },
+              '& pre': { bgcolor: '#0b0f15', p: 1.5, borderRadius: 1, overflow: 'auto' },
+              '& code': { fontFamily: 'Menlo,monospace' },
+              '& blockquote': { borderLeft: '3px solid', borderColor: 'primary.main',
+                                ml: 0, pl: 1.5, color: 'text.secondary' },
+              '& table': { borderCollapse: 'collapse', width: '100%', my: 1 },
+              '& th, & td': { border: '1px solid', borderColor: 'divider', px: 1, py: 0.5 },
+            }}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content.content}</ReactMarkdown>
+            </Box>
+          </>
+        ) : (
+          <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Typography color="text.secondary">
+              {loading ? '加载中…' : (lead ? '选择一个角色的技能查看内容' : '团队为空')}
+            </Typography>
+          </Box>
+        )}
+      </Paper>
 
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} fullWidth maxWidth="md">
         <DialogTitle>新建角色</DialogTitle>
@@ -246,7 +337,7 @@ export default function TeamPage() {
               onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
             <TextField label="职责定义" fullWidth multiline minRows={2} value={draft.description}
               onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
-            <Typography variant="subtitle2">绑定技能（id 或 tag 整组）</Typography>
+            <Typography variant="subtitle2">绑定技能</Typography>
             <SkillPicker library={library} tags={tags} value={draft.skills}
               onChange={(skills) => setDraft({ ...draft, skills })} />
           </Stack>
@@ -273,16 +364,28 @@ export default function TeamPage() {
               <Typography variant="subtitle2">绑定技能</Typography>
               <SkillPicker library={library} tags={tags} value={editing.skills || []}
                 onChange={(skills) => setEditing({ ...editing, skills })} />
-              <Divider />
-              <Typography variant="body2" color="text.secondary">
-                MCP 服务器：本轮暂未接入（字段已在数据模型中预留）。
-              </Typography>
+              <Alert severity="info">MCP 服务器本轮暂未接入（字段已在数据模型中预留）。</Alert>
             </Stack>
           )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditing(null)}>取消</Button>
           <Button variant="contained" onClick={submitEdit}>保存</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={jsonOpen} onClose={() => setJsonOpen(false)} fullWidth maxWidth="md">
+        <DialogTitle>团队 JSON</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 1.5 }}>
+            role 只有 lead / worker；kind 用于展示；skills 为技能 id 或 tag:xxx。
+          </Alert>
+          <textarea value={json} onChange={(e) => setJson(e.target.value)} rows={18}
+            style={{ width: '100%', background: '#141a24', color: '#d6dae3', border: '1px solid #243043', borderRadius: 6, padding: 10, font: '12px Menlo,monospace' }} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setJsonOpen(false)}>取消</Button>
+          <Button variant="contained" startIcon={<SaveIcon />} onClick={saveJson}>保存</Button>
         </DialogActions>
       </Dialog>
     </Box>
