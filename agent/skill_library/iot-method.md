@@ -1,0 +1,18 @@
+---
+id: iot-method
+name: expert-iot 技能包
+description: 角色专属方法与资料，按需检索使用。
+tags: [method, iot]
+---
+
+# expert-iot 技能包
+
+**一句话**：角色专属方法与资料，按需检索使用。
+
+## 导入记录（2026-11-27）
+- device-vuln
+- firmware
+- index
+- info-gathering
+- network
+- wireless

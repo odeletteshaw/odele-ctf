@@ -31,10 +31,10 @@ agent/        解题能力层（纯库）
     sandbox.py python_tool() · http.py http_tool() · process.py process_tool()
     chat.py message_tool() · bin.py disassemble_tool()/run_binary_tool()
   knowledge/    技巧卡（按类别）+ search_knowledge 检索
-  skills.py     角色技能包加载 / 检索 / search_role_skill 工具
-  team_skills/  每角色技能包：_shared + lead/recon/reporter + experts/<方向>；
-                索引进 prompt、按需检索；Hello-CTF hc-skill 资料在此（CC BY-SA 4.0，
-                见 NOTICE.md）；导入用 scripts/import_skills.py
+  skills.py     扁平技能库加载 / 检索 / search_role_skill 工具
+  skill_library/ 扁平技能库（每篇 md 带 id/name/description/tags）；角色用 skill id
+                或 tag:xxx 绑定；Hello-CTF hc-skill 资料在此（CC BY-SA 4.0，见
+                NOTICE.md）；导入用 scripts/import_skills.py --source ... --tags ...
   categories/web/     Web 题型：HTTP 靶题
     agent.py       prompt + 工具组装（http_request + run_python）；origin 锁定
     challenges/    一题一文件；_harness.py 是共享 HTTP server，_common.py 是出题 helper
@@ -58,17 +58,15 @@ agent/        解题能力层（纯库）
   `run_python`；crypto 只给 `run_python`。
 - 题面数据作为 user prompt 传给模型。flag 形如 `flag{...}`；`FLAG_PATTERN` 从模型最后一条
   消息里提取最终 flag。
-- **角色团队**（`agent/team.py`）：团队长（无工具，出计划）→ 信息收集员（用题型工具侦察，
-  pwn/ai 因目标有状态而跳过）→ 方向专家（带着计划+侦察结果解题）→ 报告收集员（写题解与
-  团队复盘）。手动与平台打题都走这条链；session 的 `role` 事件组成「团队复盘」时间线。
-  默认 13 个方向专家：web/crypto/misc/forensics/pwn/reverse/ai + cloud/blockchain/ics/
-  iot/ir/pentest（后六个用手动解题的 `agent/categories/generic` 通用工具集）。
-  自定义角色（role=custom）由团队长在计划里用 `{"invoke":[{"id","brief"}]}` 按需调用，
-  最多 3 个，按顺序执行后把发现交给专家。注意：团队 ≠ 打题 token 分配（后者见
-  `backend/slots.py`）。
-- **角色技能包**（`agent/skills.py` + `agent/team_skills/`）：每角色一套 SKILL.md 与
-  references，系统 prompt 只放索引，用 `search_role_skill` 按需读取；侦察员工具白名单
-  见 `agent/team.py: RECON_TOOLS`。导入资料用 `scripts/import_skills.py`。
+- **角色团队**（`agent/team.py`）：**团队长是唯一入口**，接收用户命令后输出 DAG
+  （节点=角色任务/依赖/needs_approval），其余角色扁平、任意调度；chain 是线性 DAG。
+  需要审批的节点通过 worker 的 approvals 队列阻塞等待，页面批准/驳回后继续。
+  默认角色池：信息收集 + 13 个方向专家（web/crypto/misc/forensics/pwn/reverse/ai +
+  cloud/blockchain/ics/iot/ir/pentest）+ 报告收集；后六个方向用
+  `agent/categories/generic` 通用工具集。注意：团队 ≠ 打题 token 分配（见 `backend/slots.py`）。
+- **技能库**（`agent/skills.py` + `agent/skill_library/`）：扁平库，每篇 md 带
+  id/name/description/tags；角色绑定 skill id 或 `tag:xxx`，索引进 prompt、用
+  `search_role_skill` 按需读取；导入资料用 `scripts/import_skills.py`。
 
 ## 核心设计原则：工具是「能力」，不是「解法」
 

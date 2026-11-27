@@ -1,15 +1,11 @@
-"""Role team configuration: lead, recon, one expert per direction, reporter.
+"""Team configuration: one lead plus a flat pool of worker roles.
 
-This is the team that actually works a challenge (agent/team.py runs it). It is NOT
-the platform token allocation — that is a separate concept, see backend/slots.py.
+The lead is the only role that receives the user's command; it assigns DAG nodes to
+workers (no fixed pipeline). Roles bind skills from the flat library by id or tag
+(`tag:web`); there are no per-role skill directories.
 
-Members are stored in the settings table and edited on the Team page. Each member:
-    {"role": "lead"|"recon"|"expert"|"reporter", "name": str,
-     "directions": [..]   # experts only
-     "description": str}
-
-Legacy team data was a direction -> token_index mapping; it is migrated once into
-token_slots and replaced by DEFAULT_TEAM.
+Stored in the settings table and edited on the Team page. Legacy configs
+(lead/recon/expert/reporter + pack ids) are migrated on load.
 """
 
 import json
@@ -20,62 +16,89 @@ from backend.settings import settings
 
 LEGACY_PATH = Path.home() / ".odele-ctf" / "team.json"
 
+LEAD_SKILLS = ["lead-method", "hello-ctf-skill", "hello-ctf-taxonomy"]
+RECON_SKILLS = ["recon-method", "tag:recon", "hello-ctf-skill", "hello-ctf-taxonomy"]
+
+DIRECTION_LABELS = {
+    "web": "Web", "crypto": "Crypto", "misc": "Misc", "forensics": "Forensics",
+    "pwn": "Pwn", "reverse": "Reverse", "ai": "AI", "cloud": "云安全",
+    "blockchain": "区块链", "ics": "工控", "iot": "IoT", "ir": "应急响应",
+    "pentest": "渗透测试",
+}
+
 DEFAULT_TEAM = [
-    {"id": "lead", "role": "lead", "name": "团队长", "directions": [],
-     "skills": ["lead"],
-     "description": "拆解题目、制定计划、分派侦察与专家、汇总结论"},
-    {"id": "recon", "role": "recon", "name": "信息收集员", "directions": [],
-     "skills": ["recon"],
+    {"id": "lead", "role": "lead", "kind": "lead", "name": "团队长", "directions": [],
+     "skills": LEAD_SKILLS,
+     "description": "唯一接收用户命令的角色：拆解 DAG、分派扁平角色、汇总结果、提交审批"},
+    {"id": "recon", "role": "worker", "kind": "recon", "name": "信息收集员", "directions": [],
+     "skills": RECON_SKILLS,
      "description": "用工具摸清目标：接口、参数、技术栈、泄露线索，输出带证据的事实清单"},
-    {"id": "expert-web", "role": "expert", "name": "Web 专家", "directions": ["web"],
-     "skills": ["experts/_common", "experts/web"],
-     "description": "Web 渗透：注入、鉴权绕过、SSRF、XXE、反序列化、模板注入等"},
-    {"id": "expert-crypto", "role": "expert", "name": "Crypto 专家", "directions": ["crypto"],
-     "skills": ["experts/_common", "experts/crypto"],
-     "description": "密码学：RSA、对称、ECC、PRNG、格与 oracle 攻击"},
-    {"id": "expert-misc", "role": "expert", "name": "Misc 专家", "directions": ["misc"],
-     "skills": ["experts/_common", "experts/misc"],
-     "description": "杂项：编码、esolang、编程题、受限环境逃逸"},
-    {"id": "expert-forensics", "role": "expert", "name": "Forensics 专家", "directions": ["forensics"],
-     "skills": ["experts/_common", "experts/forensics"],
-     "description": "取证：文件雕刻、归档、pcap、隐写、协议还原"},
-    {"id": "expert-pwn", "role": "expert", "name": "Pwn 专家", "directions": ["pwn"],
-     "skills": ["experts/_common", "experts/pwn"],
-     "description": "二进制利用：溢出、格式化串、canary、shellcode、heap"},
-    {"id": "expert-reverse", "role": "expert", "name": "Reverse 专家", "directions": ["reverse"],
-     "skills": ["experts/_common", "experts/reverse"],
-     "description": "逆向：反汇编、符号执行、字节码与自定义 VM"},
-    {"id": "expert-ai", "role": "expert", "name": "AI 专家", "directions": ["ai"],
-     "skills": ["experts/_common", "experts/ai"],
-     "description": "提示注入红队：越狱、prompt leaking、绕过输入/输出过滤"},
-    {"id": "expert-cloud", "role": "expert", "name": "云安全专家", "directions": ["cloud"],
-     "skills": ["experts/_common", "experts/cloud"],
-     "description": "云环境攻防：IAM 提权、容器逃逸、云存储/元数据、DevOps 泄露"},
-    {"id": "expert-blockchain", "role": "expert", "name": "区块链专家", "directions": ["blockchain"],
-     "skills": ["experts/_common", "experts/blockchain"],
-     "description": "智能合约审计与链上攻击：重入、溢出、权限、代理与交易分析"},
-    {"id": "expert-ics", "role": "expert", "name": "工控专家", "directions": ["ics"],
-     "skills": ["experts/_common", "experts/ics"],
-     "description": "工控安全：PLC/SCADA 协议、固件、控制逻辑与通信劫持"},
-    {"id": "expert-iot", "role": "expert", "name": "IoT 专家", "directions": ["iot"],
-     "skills": ["experts/_common", "experts/iot"],
-     "description": "物联网安全：固件提取/逆向、无线协议、硬件接口与设备漏洞"},
-    {"id": "expert-ir", "role": "expert", "name": "应急响应专家", "directions": ["ir"],
-     "skills": ["experts/_common", "experts/ir"],
-     "description": "事件响应：日志与流量分析、入侵排查、失陷溯源"},
-    {"id": "expert-pentest", "role": "expert", "name": "渗透测试专家", "directions": ["pentest"],
-     "skills": ["experts/_common", "experts/pentest"],
-     "description": "内网/外网渗透：信息搜集、提权、横向移动、隧道与后渗透"},
-    {"id": "reporter", "role": "reporter", "name": "报告收集员", "directions": [],
-     "skills": ["reporter"],
+    *[
+        {"id": f"expert-{direction}", "role": "worker", "kind": "expert",
+         "name": f"{DIRECTION_LABELS[direction]} 专家", "directions": [direction],
+         "skills": ["common-method", f"tag:{direction}"],
+         "description": f"{DIRECTION_LABELS[direction]} 方向攻防专家，按团队长分派解题"}
+        for direction in DIRECTION_LABELS
+    ],
+    {"id": "reporter", "role": "worker", "kind": "reporter", "name": "报告收集员",
+     "directions": [], "skills": ["reporter-method"],
      "description": "整理题解与团队复盘：分工、关键发现、利用链、成败原因"},
 ]
 
-VALID_ROLES = {"lead", "recon", "expert", "reporter", "custom"}
+LEAD_ROLE = "lead"
+WORKER_ROLE = "worker"
+VALID_ROLES = {LEAD_ROLE, WORKER_ROLE}
+VALID_KINDS = {"lead", "recon", "expert", "reporter", "custom", "worker"}
+
+OLD_PACK_MAP = {
+    "lead": "lead-method",
+    "recon": "tag:recon",
+    "reporter": "reporter-method",
+    "experts/_common": "common-method",
+}
+
+
+def _slug(text: str) -> str:
+    text = re.sub(r"[^\w一-鿿-]+", "-", text.strip().lower())
+    return re.sub(r"-+", "-", text).strip("-") or "role"
+
+
+def _clean_selector(selector) -> str | None:
+    selector = str(selector).strip()
+    if not selector or selector.startswith("/") or ".." in selector:
+        return None
+    if not re.fullmatch(r"[\w一-鿿:./*-]+", selector):
+        return None
+    return selector
+
+
+def _migrate_selector(selector: str) -> str | None:
+    """Map old skill-pack ids to flat-library selectors."""
+    if selector in OLD_PACK_MAP:
+        return OLD_PACK_MAP[selector]
+    if selector.startswith("experts/"):
+        direction = selector.split("/", 1)[1]
+        return "common-method" if direction == "_common" else f"tag:{direction}"
+    if selector.startswith("roles/"):
+        return None
+    return selector
+
+
+def _default_skills(role: str, kind: str, directions: list[str]) -> list[str]:
+    if role == LEAD_ROLE:
+        return list(LEAD_SKILLS)
+    if kind == "recon":
+        return list(RECON_SKILLS)
+    if kind == "expert":
+        packs = ["common-method"]
+        packs += [f"tag:{d}" for d in directions]
+        return packs
+    if kind == "reporter":
+        return ["reporter-method"]
+    return []
 
 
 def _seed_slots_from_legacy(members: list[dict]) -> None:
-    """Carry a legacy direction->token_index mapping into token_slots."""
     if settings.get("token_slots") is not None:
         return
     mapping: dict[str, int] = {}
@@ -99,35 +122,22 @@ def _legacy_file_team() -> list[dict] | None:
     return members if isinstance(members, list) and members else None
 
 
-def _is_role_team(members: list) -> bool:
-    return bool(members) and all(
-        isinstance(m, dict) and m.get("role") in VALID_ROLES for m in members
-    )
-
-
-def _slug(text: str) -> str:
-    text = re.sub(r"[^\w一-鿿-]+", "-", text.strip().lower())
-    return re.sub(r"-+", "-", text).strip("-") or "role"
-
-
-def _clean_pack(pack) -> str | None:
-    pack = str(pack).strip()
-    if not pack or pack.startswith("/") or ".." in pack.split("/"):
-        return None
-    if not re.fullmatch(r"[\w一-鿿./-]+", pack):
-        return None
-    return pack
-
-
 def _normalize(members: list) -> list[dict]:
-    """Give every member a stable id plus normalized fields (used by API and runtime)."""
+    """Give every member a stable id, map legacy roles, and normalize skill selectors."""
     cleaned: list[dict] = []
     used: set[str] = set()
     for m in members or []:
-        if not isinstance(m, dict) or m.get("role") not in VALID_ROLES:
+        if not isinstance(m, dict):
             continue
-        role = m["role"]
-        name = str(m.get("name") or role).strip()[:80] or role
+        old_role = str(m.get("role") or "")
+        if old_role in {"lead", LEAD_ROLE}:
+            role, kind = LEAD_ROLE, "lead"
+        else:
+            role = WORKER_ROLE
+            kind = str(m.get("kind") or old_role or "worker")
+            if kind not in VALID_KINDS:
+                kind = "worker"
+        name = str(m.get("name") or kind).strip()[:80] or kind
         base = str(m.get("id") or _slug(name))[:60]
         member_id = base
         suffix = 2
@@ -138,20 +148,17 @@ def _normalize(members: list) -> list[dict]:
         directions = [str(d) for d in (m.get("directions") or [])]
         if "skills" in m:
             raw_skills = m.get("skills") or []
-        elif role == "expert":
-            raw_skills = ["experts/_common"] + [f"experts/{d}" for d in directions]
-        elif role in {"lead", "recon", "reporter"}:
-            raw_skills = [role]
         else:
-            raw_skills = []
-        skills = []
-        for pack in raw_skills:
-            pack = _clean_pack(pack)
-            if pack and pack not in skills:
-                skills.append(pack)
+            raw_skills = _default_skills(role, kind, directions)
+        skills: list[str] = []
+        for raw in raw_skills:
+            mapped = _migrate_selector(_clean_selector(raw) or "")
+            if mapped and mapped not in skills:
+                skills.append(mapped)
         cleaned.append({
             "id": member_id,
             "role": role,
+            "kind": kind,
             "name": name,
             "directions": directions,
             "description": str(m.get("description") or "")[:500],
@@ -164,7 +171,7 @@ def _normalize(members: list) -> list[dict]:
 def load_team() -> list[dict]:
     stored = settings.get("team")
     if isinstance(stored, list) and stored:
-        if _is_role_team(stored):
+        if all(isinstance(m, dict) and m.get("role") for m in stored):
             return _normalize(stored)
         _seed_slots_from_legacy(stored)
         settings.set("team", DEFAULT_TEAM)
@@ -179,13 +186,19 @@ def load_team() -> list[dict]:
 
 def save_team(members: list[dict]) -> int:
     cleaned = _normalize(members)
+    # keep exactly one lead at most: promote the first lead, demote the rest
+    leads = [m for m in cleaned if m["role"] == LEAD_ROLE]
+    if len(leads) > 1:
+        for extra in leads[1:]:
+            extra["role"] = WORKER_ROLE
+            extra["kind"] = "worker"
     if cleaned:
         settings.set("team", cleaned)
     return len(cleaned)
 
 
 def create_role(name: str, description: str = "", skills: list[str] | None = None) -> dict:
-    """Add a custom role (on-demand specialist) and its own skill pack directory."""
+    """Add a flat worker role (invoked on demand by the lead)."""
     name = name.strip()
     if not name:
         raise ValueError("name is required")
@@ -197,45 +210,29 @@ def create_role(name: str, description: str = "", skills: list[str] | None = Non
     while member_id in used:
         member_id = f"{base}-{suffix}"
         suffix += 1
-    packs = []
-    for pack in skills or []:
-        clean = _clean_pack(pack)
-        if clean and clean not in packs:
-            packs.append(clean)
-    if not packs:
-        packs = [f"roles/{member_id}"]
+    selectors = []
+    for raw in skills or []:
+        mapped = _clean_selector(raw)
+        if mapped and mapped not in selectors:
+            selectors.append(mapped)
     member = {
         "id": member_id,
-        "role": "custom",
+        "role": WORKER_ROLE,
+        "kind": "custom",
         "name": name[:80],
         "directions": [],
         "description": description[:500],
-        "skills": packs,
+        "skills": selectors,
         "mcp": [],
     }
     team.append(member)
     save_team(team)
-
-    if f"roles/{member_id}" in packs:
-        from agent.skills import ROOT
-        folder = ROOT / "roles" / member_id
-        folder.mkdir(parents=True, exist_ok=True)
-        (folder / "references").mkdir(exist_ok=True)
-        skill_md = folder / "SKILL.md"
-        if not skill_md.exists():
-            skill_md.write_text(
-                f"# {name}\n\n**一句话**：{description or '自定义角色技能包，按需补充方法。'}\n\n"
-                "## 工作方式\n\n- 先核对团队长/侦察给的事实，再执行本角色职责。\n"
-                "- 需要细节时使用 search_role_skill 检索本包。\n",
-                encoding="utf-8",
-            )
     return member
 
 
 def delete_role(member_id: str) -> bool:
-    """Remove a member from the team config (its skill directory is kept)."""
     team = load_team()
-    kept = [m for m in team if m.get("id") != member_id]
+    kept = [m for m in team if m.get("id") != member_id or m["role"] == LEAD_ROLE]
     if len(kept) == len(team):
         return False
     save_team(kept)

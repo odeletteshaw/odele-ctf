@@ -3,7 +3,7 @@ import {
   Box, Button, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
   FormControlLabel, Checkbox, TextField, MenuItem, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Paper, Typography,
-  Stack, IconButton, Tooltip, Tabs, Tab, TableSortLabel,
+  Stack, IconButton, Tooltip, Tabs, Tab, TableSortLabel, Alert,
 } from '@mui/material'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import StopIcon from '@mui/icons-material/Stop'
@@ -13,7 +13,7 @@ import ReplayIcon from '@mui/icons-material/Replay'
 import DeleteIcon from '@mui/icons-material/Delete'
 import {
   listSessions, getStatus, getSlots, getSession, startAutosolve, stopAutosolve,
-  stopSession, deleteSession, retrySession, batchDelete,
+  stopSession, deleteSession, retrySession, batchDelete, approveSession,
 } from '../api.js'
 
 const STATUS = {
@@ -197,7 +197,13 @@ export default function CtfPage() {
                   <TableCell color="text.secondary">{s.id}</TableCell>
                   <TableCell color="text.secondary">{s.category}</TableCell>
                   <TableCell>{s.title}</TableCell>
-                  <TableCell><Chip size="small" label={st.label} color={st.color} /></TableCell>
+                  <TableCell>
+                    <Chip size="small" label={st.label} color={st.color} />
+                    {s.pending_approvals > 0 && (
+                      <Chip size="small" color="warning" sx={{ ml: 0.5 }}
+                        label={`待审批 ${s.pending_approvals}`} />
+                    )}
+                  </TableCell>
                   <TableCell color="text.secondary">{s.created_at || '—'}</TableCell>
                   <TableCell>
                     <Stack direction="row" spacing={0.5}>
@@ -249,6 +255,24 @@ export default function CtfPage() {
               <Typography variant="body1" sx={{ mt: 1, color: 'success.main', fontFamily: 'Menlo,monospace' }}>
                 FLAG {detail.flag || '—'}
               </Typography>
+              {(detail.approvals || []).filter((a) => a.status === 'pending').map((a) => (
+                <Alert key={a.node} severity="warning" sx={{ mt: 1.5 }}
+                  action={
+                    <Stack direction="row" spacing={1}>
+                      <Button color="success" size="small" variant="contained"
+                        onClick={() => approveSession(detail.id, a.node, true).then(() => view(detail.id))}>
+                        批准
+                      </Button>
+                      <Button color="error" size="small" variant="outlined"
+                        onClick={() => approveSession(detail.id, a.node, false).then(() => view(detail.id))}>
+                        驳回
+                      </Button>
+                    </Stack>
+                  }>
+                  <Typography variant="subtitle2">{a.role} 请求审批 · 节点 {a.node}</Typography>
+                  <Typography variant="body2">{a.task || '（无任务说明）'}</Typography>
+                </Alert>
+              ))}
               <Tabs value={tab} onChange={(e, v) => setTab(v)} sx={{ mt: 1 }}>
                 <Tab label="Findings" /><Tab label="Thinking" /><Tab label="题解" /><Tab label="团队复盘" />
               </Tabs>

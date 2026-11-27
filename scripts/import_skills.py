@@ -1,15 +1,13 @@
-"""Import role skill material into agent/team_skills/<role>/references/.
+"""Import skill material into the flat library (agent/skill_library/).
 
 Usage:
-    python scripts/import_skills.py --list
-    python scripts/import_skills.py --role expert-web --source ~/ctf-materials/web
-    python scripts/import_skills.py --role recon --source ./notes.md --dry-run
+    python scripts/import_skills.py --list [--search web]
+    python scripts/import_skills.py --source ~/notes/web --tags web,hello-ctf --id-prefix web
+    python scripts/import_skills.py --source ./paper.pdf --tags crypto --dry-run
 
-Supported inputs: .md/.txt/.py/.js/.ts/.sh/.c/.cpp/.java/.json/.yaml/.yml/.html/
-.xml/.csv (copied as Markdown, code fenced) and .pdf (text extracted when pypdf is
-installed). Files are placed under the role's references/ directory and are picked
-up automatically by agent/skills.py; restart the backend only if you want the
-Team page counts to refresh immediately.
+Each file becomes agent/skill_library/<id>.md with frontmatter (id/name/
+description/tags). Roles bind skills by id or `tag:<tag>`, so the library stays
+flat — there are no per-role directories.
 """
 
 import argparse
@@ -18,48 +16,56 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent / "agent" / "team_skills"
-DIRECTIONS = {"web", "crypto", "misc", "forensics", "pwn", "reverse", "ai",
-              "cloud", "blockchain", "ics", "iot", "ir", "pentest"}
+ROOT = Path(__file__).resolve().parent.parent
+LIBRARY = ROOT / "agent" / "skill_library"
 TEXT_EXT = {".md", ".txt", ".py", ".js", ".ts", ".sh", ".c", ".cpp", ".java", ".json",
             ".yaml", ".yml", ".html", ".xml", ".csv"}
 MAX_BYTES = 400_000
 
 
-def role_dir(role: str, root: Path = ROOT) -> Path:
-    if role in {"lead", "recon", "reporter", "shared"}:
-        return root / role if role != "shared" else root / "_shared"
-    if role == "expert":
-        return root / "experts" / "_common"
-    if role.startswith("expert-"):
-        direction = role[len("expert-"):]
-        if direction not in DIRECTIONS:
-            raise SystemExit(f"unknown direction {direction!r}; use one of {sorted(DIRECTIONS)}")
-        return root / "experts" / direction
-    raise SystemExit("--role must be shared, lead, recon, reporter, expert, or expert-<direction>")
-
-
 def slug(text: str) -> str:
-    text = text.strip().lower()
-    text = re.sub(r"[^\w一-鿿.-]+", "-", text)
-    return re.sub(r"-+", "-", text).strip("-.") or "material"
+    text = re.sub(r"[^\w一-鿿.-]+", "-", text.strip().lower())
+    return re.sub(r"-+", "-", text).strip("-.") or "skill"
 
 
-def wrap_text(title: str, source: str, content: str, suffix: str) -> str:
+def strip_frontmatter(text: str) -> str:
+    if text.startswith("---"):
+        end = text.find("\n---", 3)
+        if end != -1:
+            return text[end + 4:].lstrip("\n")
+    return text
+
+
+def title_of(text: str, fallback: str) -> str:
+    for line in text.splitlines():
+        if line.startswith("# "):
+            return line[2:].strip()
+    return fallback
+
+
+def desc_of(text: str) -> str:
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("**一句话**"):
+            return s[len("**一句话**"):].strip(" ：:")
+    for line in text.splitlines():
+        s = line.strip()
+        if s and not s.startswith(("#", ">", "|", "-", "```")):
+            return s[:160]
+    return ""
+
+
+def wrap_md(title: str, source: str, content: str, suffix: str) -> str:
     if suffix == ".md":
-        # Keep frontmatter and existing headings as-is; only add a title when the
-        # document has no markdown heading at all.
         head = "\n".join(content.splitlines()[:40])
         body = content if ("# " in head or content.lstrip().startswith("---")) \
             else f"# {title}\n\n{content}"
-        return body.rstrip() + "\n"
+        return body
     lang = {".py": "python", ".js": "javascript", ".ts": "typescript", ".sh": "bash",
             ".c": "c", ".cpp": "cpp", ".java": "java", ".json": "json",
             ".yaml": "yaml", ".yml": "yaml", ".html": "html", ".xml": "xml",
             ".csv": "csv"}.get(suffix, "")
-    return (
-        f"# {title}\n\n来源：`{source}`\n\n```{lang}\n{content.rstrip()}\n```\n"
-    )
+    return f"# {title}\n\n来源：`{source}`\n\n```{lang}\n{content.rstrip()}\n```\n"
 
 
 def read_pdf(path: Path) -> str | None:
@@ -81,118 +87,110 @@ def read_pdf(path: Path) -> str | None:
 def collect(source: Path) -> list[Path]:
     if source.is_file():
         return [source]
-    files: list[Path] = []
+    files = []
     for path in sorted(source.rglob("*")):
-        if not path.is_file() or any(part.startswith(".") for part in path.relative_to(source).parts):
+        if not path.is_file():
+            continue
+        if any(part.startswith(".") for part in path.relative_to(source).parts):
             continue
         if path.suffix.lower() in TEXT_EXT or path.suffix.lower() == ".pdf":
             files.append(path)
     return files
 
 
-def ensure_skill_md(target: Path, role: str, imported: list[str], dry: bool) -> None:
-    skill = target / "SKILL.md"
-    stamp = dt.date.today().isoformat()
-    lines = "\n".join(f"- {name}" for name in imported)
-    section = f"\n## 导入记录（{stamp}）\n{lines}\n"
-    if dry:
-        print(f"  · would {'append to' if skill.exists() else 'create'} {skill.relative_to(ROOT.parent.parent)}")
-        return
-    target.mkdir(parents=True, exist_ok=True)
-    if skill.exists():
-        with skill.open("a", encoding="utf-8") as fh:
-            fh.write(section)
+def existing_ids() -> set[str]:
+    return {p.stem for p in LIBRARY.glob("*.md")}
+
+
+def write_skill(path: Path, source: Path, tags: list[str], id_prefix: str,
+                dry: bool) -> str | None:
+    suffix = path.suffix.lower()
+    if path.stat().st_size > MAX_BYTES:
+        print(f"  ! skip large file: {path}")
+        return None
+    if suffix == ".pdf":
+        content = read_pdf(path)
+        if not content:
+            return None
+        raw = f"# {path.stem}\n\n{content}\n"
     else:
-        skill.write_text(
-            f"# {role} 技能包\n\n**一句话**：角色专属方法与资料，按需检索使用。\n"
-            f"{section}",
-            encoding="utf-8",
-        )
+        try:
+            raw = path.read_text(errors="replace")
+        except OSError as error:
+            print(f"  ! skip {path}: {error}")
+            return None
+        raw = wrap_md(path.stem, str(path), raw, suffix)
+
+    body = strip_frontmatter(raw)
+    title = title_of(body, path.stem)
+    desc = desc_of(body) or path.stem
+    skill_id = slug(f"{id_prefix}-{path.stem}" if id_prefix else path.stem)
+    base, i = skill_id, 2
+    used = existing_ids()
+    while base in used:
+        base = f"{skill_id}-{i}"
+        i += 1
+    text = (
+        "---\n"
+        f"id: {base}\n"
+        f"name: {title}\n"
+        f"description: {desc}\n"
+        f"tags: [{', '.join(tags)}]\n"
+        f"source: {str(path)}\n"
+        f"imported_at: {dt.date.today().isoformat()}\n"
+        "---\n\n"
+        + body.strip() + "\n"
+    )
+    dest = LIBRARY / f"{base}.md"
+    print(f"  + {path} -> {dest.relative_to(ROOT)}")
+    if not dry:
+        LIBRARY.mkdir(parents=True, exist_ok=True)
+        dest.write_text(text, encoding="utf-8")
+    return base
 
 
-def cmd_list(role: str | None, root: Path) -> None:
-    sys.path.insert(0, str(ROOT.parent.parent))
-    from agent.skills import entries, skill_dirs
-    roles = [role] if role else ["lead", "recon", "reporter", "expert"] + [
-        f"expert-{d}" for d in sorted(DIRECTIONS)
-    ]
-    for name in roles:
-        lookup_role, _, direction = name.partition("-") if name.startswith("expert-") else (name, "", None)
-        dirs = skill_dirs(lookup_role, direction)
-        if name == "expert":
-            dirs = skill_dirs("expert", None)
-        items = entries(dirs)
-        print(f"{name:14s} {'/'.join(str(d.relative_to(ROOT)) for d in dirs) or '(none)':28s} {len(items)} 篇")
-        for entry in items:
-            print(f"    - {entry['name']}")
+def cmd_list(search: str | None) -> None:
+    sys.path.insert(0, str(ROOT))
+    from agent.skills import entries
+    items = entries()
+    needle = (search or "").lower()
+    for entry in items:
+        haystack = f"{entry['id']} {entry['name']} {entry['description']} {' '.join(entry['tags'])}".lower()
+        if needle and needle not in haystack:
+            continue
+        print(f"{entry['id']:38s} [{','.join(entry['tags'])}] {entry['name']}")
+    print(f"total {len(items)} skill(s)")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--role", help="lead | recon | reporter | expert | expert-<direction>")
     parser.add_argument("--source", action="append", default=[], help="file or directory (repeatable)")
-    parser.add_argument("--root", default=str(ROOT), help=argparse.SUPPRESS)
+    parser.add_argument("--tags", default="", help="comma-separated tags, e.g. web,hello-ctf")
+    parser.add_argument("--id-prefix", default="", help="prefix for generated ids, e.g. web")
+    parser.add_argument("--list", action="store_true", help="list the flat library")
+    parser.add_argument("--search", default=None, help="filter --list output")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--list", action="store_true", help="show current skill packs")
     args = parser.parse_args()
 
-    root = Path(args.root).expanduser()
     if args.list:
-        cmd_list(args.role, root)
+        cmd_list(args.search)
         return
-    if not args.role or not args.source:
-        parser.error("--role and at least one --source are required (or use --list)")
+    if not args.source:
+        parser.error("--source is required (or use --list)")
 
-    target = role_dir(args.role, root)
-    refs = target / "references"
-    print(f"role: {args.role} -> {target}")
-    imported: list[str] = []
-    seen: set[str] = set()
+    tags = [t.strip() for t in args.tags.split(",") if t.strip()]
+    imported = 0
     for source_arg in args.source:
         source = Path(source_arg).expanduser()
         if not source.exists():
             print(f"  ! missing source: {source}")
             continue
         files = collect(source)
-        print(f"source: {source} ({len(files)} candidate files)")
+        print(f"source: {source} ({len(files)} candidate files), tags={tags or '-'}")
         for path in files:
-            size = path.stat().st_size
-            if size > MAX_BYTES:
-                print(f"  ! skip large file ({size} bytes): {path}")
-                continue
-            suffix = path.suffix.lower()
-            if suffix == ".pdf":
-                content = read_pdf(path)
-                if not content:
-                    continue
-                title = path.stem
-                body = f"# {title}\n\n{content}\n"
-            else:
-                try:
-                    content = path.read_text(errors="replace")
-                except OSError as error:
-                    print(f"  ! skip {path}: {error}")
-                    continue
-                rel = str(path.relative_to(source)) if source.is_dir() else path.name
-                title = Path(rel).stem
-                body = wrap_text(title, rel, content, suffix)
-            name = slug(path.stem if source.is_file() else str(path.relative_to(source).with_suffix("")))
-            candidate = name
-            i = 2
-            while candidate in seen:
-                candidate = f"{name}-{i}"
-                i += 1
-            seen.add(candidate)
-            dest = refs / f"{candidate}.md"
-            print(f"  + {path} -> {dest.relative_to(root) if dest.is_relative_to(root) else dest}")
-            if not args.dry_run:
-                refs.mkdir(parents=True, exist_ok=True)
-                dest.write_text(body, encoding="utf-8")
-            imported.append(candidate)
-
-    if imported:
-        ensure_skill_md(target, args.role, imported, args.dry_run)
-    print(f"imported {len(imported)} file(s){' (dry run)' if args.dry_run else ''}")
+            if write_skill(path, source, tags, args.id_prefix, args.dry_run):
+                imported += 1
+    print(f"imported {imported} skill(s){' (dry run)' if args.dry_run else ''}")
 
 
 if __name__ == "__main__":

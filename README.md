@@ -79,8 +79,8 @@ backend/    控制台后端（数据库 + API，纯服务层）：
 agent/      解题能力层（纯库，不依赖 frontend/backend）：
   loop.py      Tool + run_loop + solve + flag 提取
   team.py      角色团队编排：团队长出计划 → 侦察 → 方向专家 → 报告员复盘
-  skills.py    角色技能包加载：索引 / 检索 / 工具化（search_role_skill）
-  team_skills/ 每角色技能包（SKILL.md + references/），见下方「角色技能包」
+  skills.py    扁平技能库加载：索引 / 检索 / 工具化（search_role_skill）
+  skill_library/ 扁平技能库（每篇一个 md，frontmatter 带 id/name/description/tags）
   config.py    模型/厂商配置（.env 回退） · sandbox.py run_python / run_command 沙箱
   evaluate.py  benchmark 循环 · offline.py 离线测试 helper
   taskbuilder.py  spec → 一次解题任务（工具 + prompt）
@@ -89,51 +89,39 @@ agent/      解题能力层（纯库，不依赖 frontend/backend）：
   knowledge/   技巧卡（按类别，供 search_knowledge 检索）
   categories/  七个题型，每个同构：agent.py（prompt + 工具组装）+ challenges/ +
                evaluate.py；generic/ 是扩展方向（云/链/工控/IoT/应急/渗透）的通用工具集
-scripts/import_skills.py  把本地资料导入角色技能包
+scripts/import_skills.py  把本地资料导入扁平技能库
 ```
 
 ## 团队协作
 
-控制台的「团队」是**角色团队**，不是打题 token 分配：
+控制台的「团队」是**团队长 + 扁平角色池**，不是打题 token 分配：
 
-- **团队长**：读题、拆任务、出计划并分派
-- **信息收集员**：用该题型的工具摸清目标（接口、参数、技术栈、泄露线索），输出带证据的事实清单；pwn / ai 这类有状态目标跳过侦察，避免破坏现场
-- **攻防专家**：按方向匹配，每个方向一个：web / crypto / misc / forensics / pwn / reverse / ai，
-  以及扩展方向 cloud / blockchain / ics / iot / ir / pentest（扩展方向用手动解题的通用工具集），
-  带着计划与侦察结果解题
-- **报告收集员**：写中文题解 + 团队复盘（分工、关键发现、利用链、成败原因）
+- **团队长是唯一入口**：第一时间接收用户命令，把任务拆成 **DAG**（节点 = 一个角色任务 +
+  依赖 + 是否需要审批），并汇总结果。chain 只是线性 DAG。
+- **其余角色扁平**：没有固定流水线；任意角色都能被分配到任意节点。默认角色池包含信息收集、
+  13 个方向专家、报告收集，以及你新建的自定义角色。
+- **阻塞式审批**：节点标记 `needs_approval` 时会暂停，session 详情页弹出待审批卡片；
+  批准后继续，驳回则跳过该节点及其依赖。
+- session 的「团队复盘」标签展示节点时间线与角色输出；方向 → token 的分配仍在
+  「Token 槽位」页（`backend/slots.py`），与团队是两套概念。
 
-手动解题与平台自动打题都会走这套流程；session 详情页新增「团队复盘」标签，可看角色时间线。
-方向 → token 的分配拆到「Token 槽位」页（`backend/slots.py`），与团队角色是两套概念。
+团队页支持自由新建/编辑/删除角色（名字、职责定义、绑定技能）；MCP 字段已在数据模型中
+预留，本轮暂未接入真实 MCP。
 
-团队页支持**自由新建角色**：填写名字、职责定义、勾选技能包（也可新建以角色命名的技能包）。
-自定义角色的 id 会写进团队长计划，团队长按需调用（最多 3 个），它们的发现会交给方向专家。
-每个角色还能单独勾选/取消技能包；MCP 字段已在数据模型中预留，本轮暂未接入真实 MCP。
-
-### 角色技能包
-
-每个角色可以有自己的方法与资料包：
+### 技能库（扁平）
 
 ```
-agent/team_skills/
-  _shared/                 所有角色共享（Hello-CTF 方向路由、分类总表）
-  lead/ recon/ reporter/   各角色 SKILL.md + references/
-  experts/_common/         所有专家共享的方法
-  experts/<direction>/     方向专家专属资料（web/crypto/misc/forensics/pwn/reverse/ai +
-                           cloud/blockchain/ics/iot/ir/pentest）
-  roles/<role-id>/         新建自定义角色时自动生成的技能包
+agent/skill_library/*.md     每篇一个技能，frontmatter: id / name / description / tags
 ```
 
+- 角色用技能 **id** 或 **tag 选择器**（`tag:web`）绑定技能，不再有按角色的技能包目录
 - 系统 prompt 只放**紧凑索引**；角色通过 `search_role_skill(query)` 按需读取全文
-- 控制台「技能包」页可按角色浏览、搜索并阅读全文（Markdown 渲染）；团队页的技能计数可点击进入
-- 团队长/报告员不能调工具，技能包会以「索引 + SKILL.md 正文」注入
-- 侦察员只用只读工具白名单（http_request/batch、download_file、run_python、
-  search_knowledge、triage/strings/disassemble），专家用完整工具集
+- 控制台「技能库」页可搜索、按 tag 过滤并阅读全文（Markdown 渲染）
 - 导入本地资料：
-  `python scripts/import_skills.py --role expert-web --source ~/sec-notes/web`
-  （支持 md/txt/代码/PDF；`--list` 查看现有包，`--dry-run` 预览）
+  `python scripts/import_skills.py --source ~/sec-notes/web --tags web,my-notes --id-prefix web`
+  （支持 md/txt/代码/PDF；`--list` 查看，`--dry-run` 预览）
 - 已导入 [Hello-CTF](https://github.com/ProbiusOfficial/Hello-CTF) 的 `docs/hc-skill`
-  资料（CC BY-SA 4.0），来源与许可见 `agent/team_skills/NOTICE.md`
+  资料（CC BY-SA 4.0），来源与许可见 `agent/skill_library/NOTICE.md`
 
 ## 设计原则
 

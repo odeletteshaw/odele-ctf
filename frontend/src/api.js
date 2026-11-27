@@ -35,6 +35,9 @@ export const getSkillContent = (memberIndex, entryIndex) => api(`/api/team/skill
 export const getTeamPacks = () => api('/api/team/packs')
 export const createTeamRole = (body) => api('/api/team/roles', { method: 'POST', body: JSON.stringify(body) })
 export const deleteTeamRole = (id) => api(`/api/team/roles/${encodeURIComponent(id)}`, { method: 'DELETE' })
+export const getLibrarySkill = (id) => api(`/api/skills/${encodeURIComponent(id)}`)
+export const approveSession = (id, node, approved) =>
+  api(`/api/sessions/${id}/approve`, { method: 'POST', body: JSON.stringify({ node, approved }) })
 export const getTokenSlots = () => api('/api/token-slots')
 export const saveTokenSlots = (slots) => api('/api/token-slots', { method: 'POST', body: JSON.stringify({ slots }) })
 

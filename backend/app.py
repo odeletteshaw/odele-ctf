@@ -66,6 +66,9 @@ def session_to_dict(s: Session) -> dict:
         "created_ts": s.created_at or 0,
         "is_running": s.is_running(),
         "tool_calls": st.get("tool_calls", 0),
+        "pending_approvals": sum(
+            1 for a in (st.get("approvals") or []) if a.get("status") == "pending"
+        ),
     }
 
 
@@ -79,6 +82,7 @@ def session_detail_to_dict(s: Session) -> dict:
         "tools_used": st.get("tools_used", {}),
         "writeup": st.get("writeup", ""),
         "roles": st.get("roles", []),
+        "approvals": st.get("approvals", []),
         "transcript": s.transcript,
     })
     return d
@@ -132,6 +136,16 @@ def stop_session(session_id: int):
 @app.post("/api/sessions/{session_id}/delete")
 def delete_session(session_id: int):
     controller.delete_session(session_id)
+    return {"ok": True}
+
+
+@app.post("/api/sessions/{session_id}/approve")
+def approve_session(session_id: int, body: dict):
+    node = str(body.get("node") or "").strip()
+    if not node:
+        return JSONResponse({"error": "node is required"}, status_code=400)
+    if not controller.approve_session(session_id, node, bool(body.get("approved"))):
+        return JSONResponse({"error": "not found"}, status_code=404)
     return {"ok": True}
 
 
@@ -242,10 +256,10 @@ def set_team(body: dict):
 
 @app.get("/api/team/skills")
 def team_skills():
-    from agent.skills import entries, member_dirs
+    from agent.skills import resolve
     out = []
     for index, member in enumerate(load_team()):
-        items = entries(member_dirs(member))
+        items = resolve(member.get("skills") or [])
         out.append({
             "index": index,
             "id": member.get("id"),
@@ -266,6 +280,23 @@ def team_skills():
     return {"members": out}
 
 
+@app.get("/api/skills/{skill_id}")
+def library_skill_content(skill_id: str):
+    import agent.skills as skills
+    entry = next((e for e in skills.entries() if e["id"] == skill_id), None)
+    if entry is None:
+        return JSONResponse({"error": "skill not found"}, status_code=404)
+    return {
+        "id": entry["id"],
+        "name": entry["name"],
+        "description": entry["description"],
+        "tags": entry["tags"],
+        "kind": entry["kind"],
+        "source": entry["path"].name,
+        "content": skills.read(entry),
+    }
+
+
 @app.get("/api/team/skills/{member_index}/{entry_index}")
 def team_skill_content(member_index: int, entry_index: int):
     import agent.skills as skills
@@ -273,7 +304,7 @@ def team_skill_content(member_index: int, entry_index: int):
     if not (0 <= member_index < len(team)):
         return JSONResponse({"error": "member not found"}, status_code=404)
     member = team[member_index]
-    items = skills.entries(skills.member_dirs(member))
+    items = skills.resolve(member.get("skills") or [])
     if not (0 <= entry_index < len(items)):
         return JSONResponse({"error": "skill not found"}, status_code=404)
     item = items[entry_index]
@@ -292,8 +323,8 @@ def team_skill_content(member_index: int, entry_index: int):
 
 @app.get("/api/team/packs")
 def team_packs():
-    from agent.skills import available_packs
-    return {"packs": available_packs()}
+    from agent.skills import available, tags
+    return {"packs": available(), "tags": tags()}
 
 
 @app.post("/api/team/roles")

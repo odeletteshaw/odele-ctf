@@ -6,6 +6,7 @@ structured events back to the parent over `events_q`; reads supervisor guidance 
 import importlib
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +17,8 @@ from agent.taskbuilder import build_task  # noqa: E402
 from agent.team import run_team  # noqa: E402
 
 
-def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any) -> None:
+def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any,
+                approvals_q: Any = None) -> None:
     events_log: list[dict[str, Any]] = []
 
     def on_event(event: dict[str, Any]) -> None:
@@ -53,13 +55,29 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any) -> None:
         max_turns = int(spec.get("max_turns", 100))
         report = ""
         if spec.get("team"):
-            # Role team: lead plans, recon collects, the direction expert solves, the
-            # reporter writes the review (emitted as a writeup event).
+            def approve_request(request: dict[str, Any]) -> bool:
+                """Block until the user approves/rejects this DAG node (or time out)."""
+                if approvals_q is None:
+                    return True
+                deadline = time.time() + 900
+                while time.time() < deadline:
+                    try:
+                        node, approved = approvals_q.get(timeout=1)
+                    except Exception:
+                        continue
+                    if str(node) in (str(request.get("node")), "*"):
+                        return bool(approved)
+                events_q.put({"type": "approval", "status": "timeout", **request})
+                return False
+
+            # Role team: the lead receives the command, emits a DAG, and flat workers
+            # run its nodes (with approval gates when requested).
             outcome = run_team(
                 tools, system, user, team=spec["team"], category=category,
                 model=spec.get("model"), max_turns=max_turns,
                 on_event=on_event, guidance=guidance, flag_pattern=pattern,
                 persist=(spec.get("kind") == "custom"), diagnostic=diagnostic,
+                approve=approve_request,
             )
             result = outcome.result
             report = outcome.report
@@ -72,8 +90,11 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any) -> None:
         else:
             status = "solved" if result.flag else "done"  # custom: can't verify, just report
         events_q.put({"type": "status", "status": status, "flag": result.flag})
-        # After a solve, synthesize a writeup so the console can show a human-readable 题解.
-        if status == "solved" and not report:
+        # The team's reporter writes the review; otherwise synthesize a writeup so the
+        # console can still show a human-readable 题解.
+        if report:
+            events_q.put({"type": "writeup", "text": report})
+        elif status == "solved":
             writeup = generate_writeup(user, events_log, result.flag)
             if writeup:
                 events_q.put({"type": "writeup", "text": writeup})

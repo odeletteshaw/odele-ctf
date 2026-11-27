@@ -95,6 +95,15 @@ class Controller:
             self.manager.stop(s)
             self._bump()
 
+    def approve_session(self, session_id: int, node: str, approved: bool) -> bool:
+        """Resolve a DAG-node approval request from the console."""
+        session = self.get_session(session_id)
+        if session is None:
+            return False
+        session.approve(node, approved)
+        self._bump()
+        return True
+
     def delete_session(self, session_id: int) -> None:
         s = self.get_session(session_id)
         if s:

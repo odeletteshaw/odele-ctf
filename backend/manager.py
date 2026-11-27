@@ -36,6 +36,7 @@ def fresh_state() -> dict[str, Any]:
         "tools_used": {},
         "writeup": "",
         "roles": [],
+        "approvals": [],
         "done": False,
     }
 
@@ -57,6 +58,7 @@ class Session:
         self.folder = folder
         self.events: Any = _CTX.Queue()
         self._guidance: Any = _CTX.Queue()
+        self._approvals: Any = _CTX.Queue()
         self._proc: Any = None  # created in start()
         self.started_at: float | None = None
         self.created_at: float | None = time.time()
@@ -77,7 +79,9 @@ class Session:
 
     def start(self) -> None:
         self._proc = _CTX.Process(
-            target=worker_main, args=(self.spec, self.events, self._guidance), daemon=True
+            target=worker_main,
+            args=(self.spec, self.events, self._guidance, self._approvals),
+            daemon=True,
         )
         self.started_at = time.time()
         self.state["status"] = "running"
@@ -98,6 +102,7 @@ class Session:
         self.spec = spec
         self.events = _CTX.Queue()
         self._guidance = _CTX.Queue()
+        self._approvals = _CTX.Queue()
         self._proc = None
         self.started_at = None
         self.transcript = []
@@ -108,6 +113,11 @@ class Session:
         text = text.strip()
         if text:
             self._guidance.put(text)
+
+    def approve(self, node_id: str, approved: bool) -> None:
+        """Resolve a pending DAG-node approval for the worker process."""
+        if self._approvals is not None:
+            self._approvals.put((str(node_id), bool(approved)))
 
     def is_running(self) -> bool:
         return self.state["status"] == "running" and not self.state["done"]
@@ -160,10 +170,23 @@ class Session:
             roles.append({
                 "role": event.get("role"),
                 "name": event.get("name"),
+                "node": event.get("node"),
                 "status": event.get("status"),
                 "summary": event.get("summary", ""),
             })
             del roles[:-60]  # keep the timeline bounded
+        elif kind == "approval":
+            approvals = self.state.setdefault("approvals", [])
+            node = event.get("node")
+            if event.get("status") == "pending":
+                approvals.append({"node": node, "role": event.get("role"),
+                                  "task": event.get("task"), "status": "pending"})
+            else:
+                for item in reversed(approvals):
+                    if item.get("node") == node and item.get("status") == "pending":
+                        item["status"] = event.get("status")
+                        break
+            del approvals[:-40]
 
     @classmethod
     def from_row(cls, row: tuple) -> "Session":
@@ -174,6 +197,7 @@ class Session:
         s.title = s.title or "session"
         s.events = None
         s._guidance = None
+        s._approvals = None
         s._proc = None
         s.started_at = None
         s.created_at = created_at
