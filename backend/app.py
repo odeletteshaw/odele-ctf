@@ -77,9 +77,10 @@ def session_to_dict(s: Session) -> dict:
 def session_detail_to_dict(s: Session) -> dict:
     d = session_to_dict(s)
     st = s.state
+    # Deliberately no transcript/thinking here: the task UI no longer renders them,
+    # and a long solve can make those fields megabytes while the page polls.
     d.update({
         "replies": st.get("replies", 0),
-        "thinking": st.get("thinking", ""),
         "paths": st.get("paths", []),
         "tools_used": st.get("tools_used", {}),
         "writeup": st.get("writeup", ""),
@@ -87,7 +88,6 @@ def session_detail_to_dict(s: Session) -> dict:
         "approvals": st.get("approvals", []),
         "messages": st.get("messages", []),
         "mentions": st.get("mentions", []),
-        "transcript": s.transcript,
     })
     return d
 

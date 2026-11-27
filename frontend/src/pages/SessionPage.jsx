@@ -108,7 +108,7 @@ export default function SessionPage() {
 
   useEffect(() => {
     refresh()
-    const timer = setInterval(refresh, 2000)
+    const timer = setInterval(refresh, 3000)
     return () => clearInterval(timer)
   }, [refresh])
 
