@@ -1,5 +1,5 @@
 ---
-id: obfuscator-io-字符串还原-decodeuricomponent-按-utf-8-解码后须对码点做-rc4
+id: obfuscator-io-decodeuri-rc4
 name: obfuscator.io 字符串还原：decodeURIComponent 按 UTF-8 解码后须对码点做 RC4
 description: 还原 atob→%XX→decodeURIComponent→RC4 链时，decodeURIComponent 把 %XX 当 UTF-8 解码，结果字符串码点可 >255，RC4 必须异或 charCodeAt 码点而非原始字节。
 tags: [web, reverse, harvested]

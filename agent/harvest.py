@@ -22,8 +22,10 @@ FORBIDDEN = re.compile(
 
 
 def _slug(text: str) -> str:
-    text = re.sub(r"[^\w一-鿿-]+", "-", text.strip().lower())
-    return re.sub(r"-+", "-", text).strip("-") or "harvested-skill"
+    """ASCII-only slug for the skill id / filename. A CJK title yields "" here (the
+    display name keeps the Chinese), so the caller must pass an ASCII `slug`."""
+    text = re.sub(r"[^a-z0-9]+", "-", text.strip().lower())
+    return re.sub(r"-+", "-", text).strip("-")
 
 
 def _tokens(text: str) -> list[str]:
@@ -64,7 +66,11 @@ def harvest_tool(max_cards: int = MAX_PER_RUN) -> Tool:
         if "harvested" not in tags:
             tags.append("harvested")
 
-        skill_id = _slug(title)
+        skill_id = _slug(str(args.get("slug") or "")) or _slug(title)
+        if not skill_id:
+            return ("Rejected: the id/filename must be ASCII. Pass an ASCII 'slug' "
+                    "(kebab-case, e.g. 'jwt-alg-none-bypass') — the Chinese title stays as "
+                    "the display name, but files are never named in Chinese.")
         existing = {e["id"]: e for e in skills.entries()}
         if skill_id in existing:
             return f"Already covered by {skill_id}; skipped (do not duplicate)."
@@ -104,12 +110,15 @@ def harvest_tool(max_cards: int = MAX_PER_RUN) -> Tool:
             "Add ONE reusable, previously-uncovered technique to the shared skill library. "
             "Rules enforced: max 2 new cards per solve; no flags/target hosts; tags must be "
             "existing library tags; body 120-6000 chars; duplicates/near-duplicates refused. "
+            "The file/id is ASCII — pass an ASCII 'slug' when the title is Chinese. "
             "Skip harvesting when the technique is already covered."
         ),
         parameters={
             "type": "object",
             "properties": {
                 "title": {"type": "string", "description": "Technique title (<=80 chars), no challenge name."},
+                "slug": {"type": "string", "description": "ASCII kebab-case id for the filename, "
+                         "e.g. 'jwt-alg-none-bypass'. Required when the title is not ASCII."},
                 "description": {"type": "string", "description": "One-line summary (<=200 chars)."},
                 "tags": {"type": "array", "items": {"type": "string"},
                          "description": "1-3 existing library tags, e.g. ['web','sql']."},

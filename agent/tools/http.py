@@ -60,6 +60,17 @@ def _decode_b64(value: Any, label: str) -> bytes:
         raise OutOfScope(f"{label} is not valid base64: {error}")
 
 
+def _clean_headers(headers: Any, multipart: bool) -> "dict[str, str] | None":
+    """Drop a caller-supplied Content-Type when sending multipart: httpx must set it
+    itself so it carries the generated boundary. A stray `Content-Type: application/zip`
+    otherwise overrides the boundary header and the server can't parse the upload."""
+    if not isinstance(headers, dict):
+        return headers
+    if not multipart:
+        return headers
+    return {k: v for k, v in headers.items() if k.lower() != "content-type"}
+
+
 def _content_kwargs(args: dict[str, Any]) -> dict[str, Any]:
     """Resolve the request body into httpx kwargs, binary-safe.
 
@@ -131,11 +142,12 @@ def _batch_key(args: dict[str, Any]) -> list[Any]:
 def run_http(target: str, client: httpx.Client, args: dict[str, Any]) -> str:
     try:
         url = build_url(target, args["path"])
+        kwargs = _content_kwargs(args)
         response = client.request(
             args["method"].upper(),
             url,
-            headers=args.get("headers"),
-            **_content_kwargs(args),
+            headers=_clean_headers(args.get("headers"), "files" in kwargs),
+            **kwargs,
         )
     except (OutOfScope, httpx.HTTPError, httpx.InvalidURL, KeyError) as error:
         return f"Error: {error}"
@@ -259,8 +271,10 @@ def _run_batch(target: str, client: httpx.Client, reqs: list) -> str:
         path = str(req.get("path", "/"))
         try:
             url = build_url(target, path)
+            kwargs = _content_kwargs(req)
             response = client.request(
-                method, url, headers=req.get("headers"), **_content_kwargs(req)
+                method, url, headers=_clean_headers(req.get("headers"), "files" in kwargs),
+                **kwargs,
             )
             snippet = " ".join(response.text.split())[:SNIPPET]
             lines.append(f"{idx}: {response.status_code} {method} {path} | {snippet}")

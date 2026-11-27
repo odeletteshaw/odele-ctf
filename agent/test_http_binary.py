@@ -86,6 +86,21 @@ def test_multipart_file_upload():
     srv.shutdown()
 
 
+def test_multipart_ignores_caller_content_type():
+    # A caller-supplied Content-Type must not override the multipart boundary header,
+    # or the server receives a multipart body labelled application/zip and can't parse it.
+    srv, base = serve()
+    raw = make_symlink_zip()
+    client = new_http_client()
+    run_http(base, client, {"method": "POST", "path": "/upload",
+             "headers": {"Content-Type": "application/zip"},
+             "files": [{"field": "file", "filename": "exp.zip",
+                        "content_b64": base64.b64encode(raw).decode()}]})
+    ct = RECEIVED["ctype"].decode()
+    assert ct.startswith("multipart/form-data") and "boundary=" in ct, ct
+    srv.shutdown()
+
+
 def test_bad_base64_is_reported():
     srv, base = serve()
     client = new_http_client()
@@ -98,5 +113,6 @@ if __name__ == "__main__":
     test_body_b64_is_byte_exact()
     test_text_body_would_corrupt()
     test_multipart_file_upload()
+    test_multipart_ignores_caller_content_type()
     test_bad_base64_is_reported()
     print("PASS http binary test")

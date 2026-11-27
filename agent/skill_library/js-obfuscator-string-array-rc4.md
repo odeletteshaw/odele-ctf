@@ -1,5 +1,5 @@
 ---
-id: javascript-obfuscator-字符串数组还原-atob-decodeuricomponent-rc4-链的字节语义
+id: js-obfuscator-string-array-rc4
 name: javascript-obfuscator 字符串数组还原：atob→decodeURIComponent→RC4 链的字节语义
 description: 还原 obfuscator.io 风格「base64 + 调用点传 RC4 密钥」的字符串数组时，按 JS 语义逐步复现解码链，避免 latin-1/UTF-16 误用导致乱码。
 tags: [web, reverse, harvested]

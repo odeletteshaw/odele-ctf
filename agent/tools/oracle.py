@@ -18,8 +18,13 @@ def oracle_tool(name: str, description: str, oracle, value_desc: str) -> Tool:
         lines = []
         for idx, raw in enumerate(inputs):
             try:
-                data = bytes.fromhex(str(raw))
+                # Tolerate spaced / 0x-prefixed hex ("de ad", "0xdead") — otherwise a
+                # cosmetic format error fails the whole multi-query attack batch.
+                clean = "".join(str(raw).split()).removeprefix("0x")
+                data = bytes.fromhex(clean)
                 lines.append(f"{idx}: {oracle(data)}")
+            except ValueError as error:
+                lines.append(f"{idx}: error: invalid hex ({error})")
             except Exception as error:
                 lines.append(f"{idx}: error: {error}")
         return "\n".join(lines)

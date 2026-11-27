@@ -70,7 +70,8 @@ def phar_tool() -> Tool:
             "deserialization (e.g. passing phar://<file>/<entry> to file_exists()/file_get_contents). "
             "`metadata` is the serialized object string (e.g. O:4:\\\"File\\\":2:{...}); `entry` is the "
             "archive name to reference; `entry_content` is optional entry bytes. Returns the phar as "
-            "base64 — base64-decode it and URL-encode the raw bytes before sending them as content."
+            "base64 — pass that base64 straight to http_request's body_b64 (or a files upload) so the "
+            "raw bytes arrive intact; only URL-encode instead if the sink is a query/form parameter."
         ),
         parameters={
             "type": "object",
