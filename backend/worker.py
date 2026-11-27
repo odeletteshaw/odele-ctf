@@ -12,7 +12,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agent.loop import generate_writeup, solve  # noqa: E402
+from agent.loop import extract_flags, generate_writeup, solve  # noqa: E402
 from agent.taskbuilder import build_task  # noqa: E402
 from agent.team import run_team  # noqa: E402
 
@@ -58,6 +58,7 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any,
         # persist=True so the agent keeps going on text without a flag.
         max_turns = int(spec.get("max_turns", 100))
         report = ""
+        outcome = None
         if spec.get("team"):
             def ask_user_callback(request: dict[str, Any]) -> str:
                 """Emit an @mention and block until the user replies on the Calls page."""
@@ -106,11 +107,36 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any,
             result = solve(tools, system, user, on_event=on_event, guidance=guidance,
                            flag_pattern=pattern, persist=(spec.get("kind") == "custom"),
                            max_turns=max_turns, diagnostic=diagnostic)
+        # A run often surfaces a decoy or a wrong first guess before the real flag.
+        # Collect every candidate so the platform can decide; the reporter's flags
+        # come first because the report saw the whole run.
+        candidates: list[str] = []
+        if outcome is not None:
+            candidates.extend(outcome.flags)
+        if result.flag and result.flag not in candidates:
+            # With a team the report already ordered candidates best-first; a lone
+            # runner's own extracted flag is the only candidate it has.
+            if outcome is None:
+                candidates.insert(0, result.flag)
+            else:
+                candidates.append(result.flag)
+        for event in events_log:
+            if event.get("type") != "tool_result":
+                continue
+            for flag in extract_flags(str(event.get("output", "")), pattern):
+                if flag not in candidates:
+                    candidates.append(flag)
+        # Don't submit an unbounded pile of strings; a handful of plausible candidates
+        # is enough, and every extra wrong submission costs a platform attempt.
+        candidates = candidates[:8]
+        if known_flag is not None and known_flag in candidates:
+            result.flag = known_flag
         if known_flag is not None:
             status = "solved" if result.flag == known_flag else "failed"
         else:
             status = "solved" if result.flag else "done"  # custom: can't verify, just report
-        events_q.put({"type": "status", "status": status, "flag": result.flag})
+        events_q.put({"type": "status", "status": status, "flag": result.flag,
+                      "flags": candidates})
         # The team's reporter writes the review; otherwise synthesize a writeup so the
         # console can still show a human-readable 题解.
         if report:

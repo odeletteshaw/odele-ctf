@@ -32,6 +32,7 @@ def fresh_state() -> dict[str, Any]:
         "tool_calls": 0,
         "thinking": "",
         "flag": None,
+        "flag_candidates": [],
         "paths": [],
         "tools_used": {},
         "writeup": "",
@@ -173,6 +174,8 @@ class Session:
             self.state["status"] = event.get("status", self.state["status"])
             if event.get("flag"):
                 self.state["flag"] = event["flag"]
+            if event.get("flags"):
+                self.state["flag_candidates"] = list(event["flags"])
         elif kind == "writeup":
             self.state["writeup"] = event.get("text", "")
         elif kind == "role":

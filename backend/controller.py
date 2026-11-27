@@ -322,18 +322,30 @@ class Controller:
 
     def _finalize_retry(self, meta: dict, flag: str | None,
                         session: Session | None = None) -> None:
-        accepted = False
+        accepted = None
+        candidates: list[str] = []
+        if session is not None:
+            candidates.extend(session.state.get("flag_candidates") or [])
+        if flag and flag not in candidates:
+            candidates.insert(0, flag)
         try:
             client = PlatformClient()
             try:
-                if flag:
+                for candidate in dict.fromkeys(candidates):
                     try:
-                        client.submit_flag(meta["ground_id"], meta["challenge_id"], flag)
-                        accepted = True
+                        response = client.submit_flag(meta["ground_id"], meta["challenge_id"], candidate)
                     except PlatformError as e:
-                        print(f"[retry submit] rejected: {e.code}")
+                        print(f"[retry submit] rejected: {candidate!r}: {e.code}")
+                        continue
+                    if isinstance(response, dict) and (
+                            response.get("accepted") or response.get("is_solved")):
+                        accepted = candidate
+                        break
+                    if self._challenge_solved(client, meta):
+                        accepted = candidate
+                        break
                 client.log_note(meta["challenge_id"], "result",
-                                (f"solved: {flag}" if flag else "no flag")[:2000])
+                                (f"solved: {accepted}" if accepted else "no accepted flag")[:2000])
             finally:
                 try:
                     client.delete_environment(meta["ground_id"], meta["challenge_id"])
@@ -343,7 +355,12 @@ class Controller:
         except Exception as e:
             print(f"[retry] finalize: {e}")
         if session is not None:
-            if flag and accepted:
+            if accepted:
+                session.state["status"] = "solved"
+                session.state["flag"] = accepted
+                session.state["done"] = True
+                self.manager.save()
+                self._bump()
                 self._remember(session)
             else:
                 session.state["status"] = "failed"
@@ -461,19 +478,38 @@ class Controller:
         client = PlatformClient(token=slot["token"])
         try:
             flag = session.state.get("flag") if session else None
+            candidates: list[str] = []
+            if session is not None:
+                candidates.extend(session.state.get("flag_candidates") or [])
+            if flag and flag not in candidates:
+                candidates.insert(0, flag)
             solved = False
+            accepted = None
             submit_error = None
             try:
-                if flag:
+                for candidate in dict.fromkeys(candidates):
                     try:
-                        client.submit_flag(meta["ground_id"], meta["challenge_id"], flag)
+                        response = client.submit_flag(meta["ground_id"], meta["challenge_id"], candidate)
                     except PlatformError as e:
                         submit_error = e.code
-                        print(f"[autosolve:{slot['direction']}] submit rejected: {e.code}")
-                    else:
-                        solved = self._challenge_solved(client, meta)
+                        print(f"[autosolve:{slot['direction']}] submit rejected: {candidate!r}: {e.code}")
+                        continue
+                    except Exception as e:
+                        print(f"[autosolve:{slot['direction']}] submit error: {candidate!r}: {e}")
+                        continue
+                    # The submit response is the platform's direct verdict; is_solved can
+                    # lag behind it. Trust either, so a valid flag is not discarded.
+                    if isinstance(response, dict) and (
+                            response.get("accepted") or response.get("is_solved")):
+                        solved = True
+                        accepted = candidate
+                        break
+                    if self._challenge_solved(client, meta):
+                        solved = True
+                        accepted = candidate
+                        break
                 client.log_note(meta["challenge_id"], "result",
-                                (f"solved: {flag}" if flag else "no flag found")[:2000])
+                                (f"solved: {accepted}" if accepted else "no accepted flag")[:2000])
             except Exception as e:
                 print(f"[autosolve:{slot['direction']}] submit/note error: {e}")
             try:
@@ -485,11 +521,11 @@ class Controller:
                 client.close()
             except Exception:
                 pass
-        if flag and solved:
+        if accepted and solved:
             slot["done"] += 1
             if session is not None:
                 session.state["status"] = "solved"
-                session.state["flag"] = flag
+                session.state["flag"] = accepted
             self._remember(session)
         else:
             cid = str(meta["challenge_id"])
