@@ -66,6 +66,24 @@ def extract_flags(text: str, pattern: "re.Pattern[str] | None" = None) -> list[s
             if not _is_placeholder_flag(f) and not _is_css_like(f)]
 
 
+def flag_candidates(text: str, pattern: "re.Pattern[str] | None" = None) -> list[str]:
+    """Every plausible flag in `text`, for platform submission.
+
+    Unlike `extract_flags`, this does not stop at the first matching format: a target
+    can print a decoy `flag{...}` next to the real `CTF2{...}` in the same response.
+    Platform specs (pattern=None) therefore collect both formats; an explicit custom
+    prefix stays strict.
+    """
+    if pattern is not None:
+        return extract_flags(text, pattern)
+    found: list[str] = []
+    for flag in [*FLAG_PATTERN.findall(text), *GENERAL_FLAG_PATTERN.findall(text)]:
+        if flag in found or _is_placeholder_flag(flag) or _is_css_like(flag):
+            continue
+        found.append(flag)
+    return found
+
+
 @dataclass
 class Tool:
     """One capability the model may call. The handler takes parsed JSON args and

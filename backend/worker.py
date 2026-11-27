@@ -12,7 +12,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agent.loop import extract_flags, generate_writeup, solve  # noqa: E402
+from agent.loop import flag_candidates, generate_writeup, solve  # noqa: E402
 from agent.taskbuilder import build_task  # noqa: E402
 from agent.team import run_team  # noqa: E402
 
@@ -123,7 +123,7 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any,
         for event in events_log:
             if event.get("type") != "tool_result":
                 continue
-            for flag in extract_flags(str(event.get("output", "")), pattern):
+            for flag in flag_candidates(str(event.get("output", "")), pattern):
                 if flag not in candidates:
                     candidates.append(flag)
         # Don't submit an unbounded pile of strings; a handful of plausible candidates
@@ -131,7 +131,12 @@ def worker_main(spec: dict[str, Any], events_q: Any, guidance_q: Any,
         candidates = candidates[:8]
         if known_flag is not None and known_flag in candidates:
             result.flag = known_flag
-        if known_flag is not None:
+        if spec.get("platform_challenge_id"):
+            # Only the controller/platform may claim success for a platform task; a
+            # local flag-shaped string can still be a decoy. "done" lets _submit_slot
+            # verify the candidates and set solved/failed.
+            status = "done"
+        elif known_flag is not None:
             status = "solved" if result.flag == known_flag else "failed"
         else:
             status = "solved" if result.flag else "done"  # custom: can't verify, just report

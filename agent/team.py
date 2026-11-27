@@ -20,6 +20,7 @@ from agent.loop import (
     chat_fn,
     complete,
     extract_flags,
+    flag_candidates,
     run_loop,
 )
 from agent.harvest import harvest_tool
@@ -467,7 +468,7 @@ def run_team(
 
     def collect_flags(*texts: Any) -> None:
         for text in texts:
-            for flag in extract_flags(str(text), flag_pattern):
+            for flag in flag_candidates(str(text), flag_pattern):
                 if flag not in candidate_flags:
                     candidate_flags.append(flag)
 
@@ -616,7 +617,7 @@ def run_team(
     collect_flags(report)
     # Flags named in the final report are the best candidates: the report had the
     # whole run to distinguish decoys from the real flag.
-    report_flags = extract_flags(report, flag_pattern)
+    report_flags = flag_candidates(report, flag_pattern)
     ordered_flags = []
     for flag in [*report_flags, *candidate_flags]:
         if flag not in ordered_flags:
