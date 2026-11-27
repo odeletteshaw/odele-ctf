@@ -49,9 +49,21 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     return meta, text[end + 4:].lstrip("\n")
 
 
+# Hello-CTF cards were imported flat from a nested doc tree, so their relative
+# "[信息搜集](info-gathering.md)" / "[WEB](../web/index.md)" links point at paths that do
+# not exist in the flat library — and the agent has no path-open tool anyway (only
+# search_role_skill by keyword). Flatten such dead local links to their anchor text (a
+# topic the agent can search for if it wants more); keep real external URLs clickable.
+_LOCAL_MD_LINK = re.compile(r"\[([^\]]+)\]\((?!https?://)[^)]*\)")
+
+
+def _flatten_dead_links(text: str) -> str:
+    return _LOCAL_MD_LINK.sub(r"\1", text)
+
+
 def read(entry: dict[str, Any]) -> str:
     _, body = _parse_frontmatter(entry["path"].read_text(errors="replace"))
-    return body
+    return _flatten_dead_links(body)
 
 
 def _stamp() -> float:
@@ -265,7 +277,9 @@ def role_skill_tool(items: list[dict[str, Any]]) -> Tool | None:
         name="search_role_skill",
         description=(
             "Search the skills bound to YOUR role in the shared flat skill library "
-            "(methods, checklists, imported reference material) and return matching text."
+            "(methods, checklists, imported reference material) and return matching text. "
+            "A card may name a related technique (e.g. 'SSTI', '信息搜集') — search that name "
+            "to pull up its own card; there are no clickable links to follow."
         ),
         parameters={
             "type": "object",
