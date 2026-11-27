@@ -264,11 +264,12 @@ export default function SessionPage({ id: propId, embedded = false }) {
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
                 placeholder={pendingMention
                   ? `回复 @${pendingMention.from}…`
-                  : '给团队发消息（supervisor guidance）…'}
-                disabled={!session.is_running && !pendingMention} />
+                  : session.is_running
+                    ? '给团队发消息（supervisor guidance）…'
+                    : '补充题解 / 提示，带这条信息继续解题（会重跑）…'} />
               <Button variant="contained" endIcon={<SendIcon />} onClick={send}
-                disabled={!text.trim() || (!session.is_running && !pendingMention)}>
-                发送
+                disabled={!text.trim()}>
+                {session.is_running || pendingMention ? '发送' : '继续解题'}
               </Button>
             </Stack>
           </>

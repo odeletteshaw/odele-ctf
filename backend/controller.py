@@ -115,11 +115,28 @@ class Controller:
         text = text.strip()
         if not text:
             return False
-        session.send_guidance(text)
+        if session.is_running():
+            # Live run: inject as supervisor guidance the worker will pick up.
+            session.send_guidance(text)
+            session.state.setdefault("messages", []).append({
+                "from": "你", "to": "团队", "kind": "user", "node": None, "text": text,
+            })
+            session.state["messages"] = session.state["messages"][-200:]
+            self.manager.save()
+            self._bump()
+            return True
+        # Finished run: the worker is gone, so a message can't reach it. Treat it as "here's
+        # a writeup/hint, keep going" — re-launch the solve with the user's info appended as
+        # context so the team replans from it (and still reproduces the flag with its tools).
+        spec = dict(session.spec or {})
+        prior = str(spec.get("context") or "")
+        spec["context"] = (prior + "\n\n" if prior else "") + f"[用户补充] {text}"
+        spec.setdefault("team", load_team())
+        session.reset(spec)
         session.state.setdefault("messages", []).append({
             "from": "你", "to": "团队", "kind": "user", "node": None, "text": text,
         })
-        session.state["messages"] = session.state["messages"][-200:]
+        session.start()
         self.manager.save()
         self._bump()
         return True
